@@ -1,1 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Map Survey</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+        }
+        .map-container {
+            text-align: center;
+        }
+        .map-image {
+            max-width: 100%;
+            height: auto;
+        }
+        .form-container {
+            margin-top: 30px;
+        }
+        .form-field {
+            margin-bottom: 15px;
+        }
+        .form-field label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .form-field input, .form-field textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .submit-button {
+            padding: 10px 15px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Map Survey</h1>
+    <div class="map-container">
+        <img id="mapImage" src="" alt="Map Image" class="map-image">
+    </div>
+    <div class="form-container">
+        <form id="surveyForm" method="POST" action="/submit">
+            <div class="form-field">
+                <label for="Question">Question</label>
+                <textarea id="Question" name="Question" rows="4" required></textarea>
+            </div>
+            <div class="form-field">
+                <label for="QuestionType">Question Type</label>
+                <input type="text" id="QuestionType" name="Question Type" required>
+            </div>
+            <div class="form-field">
+                <label for="QuasiLogicalExpression">Quasi Logical Expression</label>
+                <input type="text" id="QuasiLogicalExpression" name="Quasi Logical Expression" required>
+            </div>
+            <div class="form-field">
+                <label for="ExpressionComplexity">Expression Complexity</label>
+                <input type="text" id="ExpressionComplexity" name="Expression Complexity" required>
+            </div>
+            <div class="form-field">
+                <label for="CorrectAnswer">Correct Answer</label>
+                <input type="text" id="CorrectAnswer" name="Correct Answer" required>
+            </div>
+            <input type="hidden" id="Map" name="Map" value="">
+            <input type="hidden" id="MapCategory" name="Map Category" value="">
+            <button type="submit" class="submit-button">Submit</button>
+        </form>
+    </div>
+    <script>
+        let currentMap = null;
+
+        function getMapData() {
+            fetch('/get_maps')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.done) {
+                        alert('Thank you! All maps have received sufficient responses.');
+                        document.getElementById('surveyForm').style.display = 'none';
+                        document.getElementById('mapImage').style.display = 'none';
+                    } else {
+                        currentMap = data.map;
+                        document.getElementById('mapImage').src = currentMap.URL;
+                        document.getElementById('Map').value = currentMap.URL;
+                        document.getElementById('MapCategory').value = currentMap.Type;
+                    }
+                });
+        }
+
+        document.getElementById('surveyForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            // Submit form data
+            const formData = new FormData(this);
+
+            fetch('/submit', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(data => {
+                alert('Data submitted successfully!');
+                // Clear the form
+                this.reset();
+                // Get next map
+                getMapData();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+
+        // On page load, get map data
+        window.onload = function() {
+            getMapData();
+        };
+    </script>
+</body>
+</html>
 
