@@ -90,27 +90,34 @@
         }
 
         document.getElementById('surveyForm').addEventListener('submit', function(event) {
-            event.preventDefault();
+      event.preventDefault();
 
-            // Submit form data
-            const formData = new FormData(this);
+      // Create an object from the form data
+      const formData = {};
+      const inputs = this.querySelectorAll('input[name], textarea[name]');
+      inputs.forEach(input => {
+          formData[input.name] = input.value;
+      });
 
-            fetch('/submit', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(data => {
-                alert('Data submitted successfully!');
-                // Clear the form
-                this.reset();
-                // Get next map
-                getMapData();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        });
+      fetch('/submit', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+      })
+      .then(response => response.text())
+      .then(data => {
+          alert('Data submitted successfully!');
+          // Clear the form
+          this.reset();
+          // Get next map
+          getMapData();
+      })
+      .catch(error => {
+          console.error('Error:', error);
+      });
+  });
 
         // On page load, get map data
         window.onload = function() {
