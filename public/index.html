@@ -11,7 +11,7 @@
         .map-container {
             text-align: center;
         }
-        .map-image {
+        .map-display {
             max-width: 100%;
             height: auto;
         }
@@ -39,8 +39,8 @@
 </head>
 <body>
     <h1>Map Survey</h1>
-    <div class="map-container">
-        <img id="mapImage" src="" alt="Map Image" class="map-image">
+    <div class="map-container" id="mapContainer">
+        <!-- The map will be displayed here -->
     </div>
     <div class="form-container">
         <form id="surveyForm" method="POST" action="/submit">
@@ -64,6 +64,11 @@
                 <label for="CorrectAnswer">Correct Answer</label>
                 <input type="text" id="CorrectAnswer" name="Correct Answer" required>
             </div>
+            <!-- Prolific ID Field -->
+            <div class="form-field">
+                <label for="ProlificID">Prolific ID</label>
+                <input type="text" id="ProlificID" name="ProlificID" required>
+            </div>
             <input type="hidden" id="Map" name="Map" value="">
             <input type="hidden" id="MapCategory" name="Map Category" value="">
             <button type="submit" class="submit-button">Submit</button>
@@ -79,45 +84,74 @@
                     if (data.done) {
                         alert('Thank you! All maps have received sufficient responses.');
                         document.getElementById('surveyForm').style.display = 'none';
-                        document.getElementById('mapImage').style.display = 'none';
+                        document.getElementById('mapContainer').style.display = 'none';
                     } else {
                         currentMap = data.map;
-                        document.getElementById('mapImage').src = currentMap.URL;
+                        displayMap(currentMap.URL);
                         document.getElementById('Map').value = currentMap.URL;
                         document.getElementById('MapCategory').value = currentMap.Type;
                     }
+                })
+                .catch(error => {
+                    console.error('Error fetching map data:', error);
                 });
         }
 
+        function displayMap(url) {
+            const mapContainer = document.getElementById('mapContainer');
+            mapContainer.innerHTML = ''; // Clear any previous content
+
+            const fileExtension = url.split('.').pop().toLowerCase();
+
+            if (fileExtension === 'pdf') {
+                // Display PDF in an iframe
+                const iframe = document.createElement('iframe');
+                iframe.src = url;
+                iframe.style.width = '100%';
+                iframe.style.height = '600px';
+                iframe.frameBorder = '0';
+                mapContainer.appendChild(iframe);
+            } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(fileExtension)) {
+                // Display image in an img tag
+                const img = document.createElement('img');
+                img.src = url;
+                img.className = 'map-display';
+                mapContainer.appendChild(img);
+            } else {
+                // Unsupported file type
+                mapContainer.innerHTML = '<p>Unable to display this map format.</p>';
+            }
+        }
+
         document.getElementById('surveyForm').addEventListener('submit', function(event) {
-      event.preventDefault();
+            event.preventDefault();
 
-      // Create an object from the form data
-      const formData = {};
-      const inputs = this.querySelectorAll('input[name], textarea[name]');
-      inputs.forEach(input => {
-          formData[input.name] = input.value;
-      });
+            // Create an object from the form data
+            const formData = {};
+            const inputs = this.querySelectorAll('input[name], textarea[name]');
+            inputs.forEach(input => {
+                formData[input.name] = input.value;
+            });
 
-      fetch('/submit', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(formData)
-      })
-      .then(response => response.text())
-      .then(data => {
-          alert('Data submitted successfully!');
-          // Clear the form
-          this.reset();
-          // Get next map
-          getMapData();
-      })
-      .catch(error => {
-          console.error('Error:', error);
-      });
-  });
+            fetch('/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.text())
+            .then(data => {
+                alert('Data submitted successfully!');
+                // Clear the form
+                this.reset();
+                // Get next map
+                getMapData();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
 
         // On page load, get map data
         window.onload = function() {
@@ -126,4 +160,3 @@
     </script>
 </body>
 </html>
-

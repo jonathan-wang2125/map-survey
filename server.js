@@ -89,6 +89,7 @@ app.post('/submit', (req, res) => {
       data['Quasi Logical Expression'],
       data['Expression Complexity'],
       data['Correct Answer'],
+      data.ProlificID,
     ]
       .map((value) => `"${(value || '').replace(/"/g, '""')}"`) // Handle commas and quotes in CSV
       .join(',') + '\n';
@@ -120,6 +121,7 @@ if (!fs.existsSync(collectedDataPath)) {
     'Quasi Logical Expression',
     'Expression Complexity',
     'Correct Answer',
+    'ProlificID',
   ];
   fs.writeFileSync(collectedDataPath, headers.join(',') + '\n');
 }
