@@ -35,47 +35,94 @@
             padding: 10px 15px;
             font-size: 16px;
         }
+        /* Added styles */
+        .hidden {
+            display: none;
+        }
+        .consent-container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: left;
+        }
+        .consent-button {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>Map Survey</h1>
-    <div class="map-container" id="mapContainer">
-        <!-- The map will be displayed here -->
+    <!-- Informed Consent Screen -->
+    <div id="consentScreen" class="consent-container">
+        <h1>Informed Consent</h1>
+        <p>Thank you for considering participation in this study. Please read the following information carefully:</p>
+        <ul>
+            <li>This survey is part of a scientific research project conducted by [Your Institution/University].</li>
+            <li>Your participation is completely voluntary, and you can withdraw at any time.</li>
+            <li>The data collected will be anonymous and used only for research purposes.</li>
+            <li>There are no known risks associated with this study.</li>
+            <li>By agreeing, you confirm that you are at least 18 years old and consent to participate.</li>
+        </ul>
+        <p>
+            <input id="consentCheckbox" type="checkbox" onclick="toggleConsentButton()"> I have read and understood the information and consent to participate.
+        </p>
+        <button id="consentButton" class="submit-button consent-button" onclick="showSurvey()" disabled>I Agree</button>
     </div>
-    <div class="form-container">
-        <form id="surveyForm" method="POST" action="/submit">
-            <div class="form-field">
-                <label for="Question">Question</label>
-                <textarea id="Question" name="Question" rows="4" required></textarea>
-            </div>
-            <div class="form-field">
-                <label for="QuestionType">Question Type</label>
-                <input type="text" id="QuestionType" name="Question Type" required>
-            </div>
-            <div class="form-field">
-                <label for="QuasiLogicalExpression">Quasi Logical Expression</label>
-                <input type="text" id="QuasiLogicalExpression" name="Quasi Logical Expression" required>
-            </div>
-            <div class="form-field">
-                <label for="ExpressionComplexity">Expression Complexity</label>
-                <input type="text" id="ExpressionComplexity" name="Expression Complexity" required>
-            </div>
-            <div class="form-field">
-                <label for="CorrectAnswer">Correct Answer</label>
-                <input type="text" id="CorrectAnswer" name="Correct Answer" required>
-            </div>
-            <!-- Prolific ID Field -->
-            <div class="form-field">
-                <label for="ProlificID">Prolific ID</label>
-                <input type="text" id="ProlificID" name="ProlificID" required>
-            </div>
-            <input type="hidden" id="Map" name="Map" value="">
-            <input type="hidden" id="MapCategory" name="Map Category" value="">
-            <button type="submit" class="submit-button">Submit</button>
-        </form>
+
+    <!-- Survey Screen (Initially Hidden) -->
+    <div id="surveyScreen" class="hidden">
+        <h1>Map Survey</h1>
+        <div class="map-container" id="mapContainer">
+            <!-- The map will be displayed here -->
+        </div>
+        <div class="form-container">
+            <form id="surveyForm" method="POST" action="/submit">
+                <div class="form-field">
+                    <label for="Question">Question</label>
+                    <textarea id="Question" name="Question" rows="4" required></textarea>
+                </div>
+                <div class="form-field">
+                    <label for="QuestionType">Question Type</label>
+                    <input type="text" id="QuestionType" name="Question Type" required>
+                </div>
+                <div class="form-field">
+                    <label for="QuasiLogicalExpression">Quasi Logical Expression</label>
+                    <input type="text" id="QuasiLogicalExpression" name="Quasi Logical Expression" required>
+                </div>
+                <div class="form-field">
+                    <label for="ExpressionComplexity">Expression Complexity</label>
+                    <input type="text" id="ExpressionComplexity" name="Expression Complexity" required>
+                </div>
+                <div class="form-field">
+                    <label for="CorrectAnswer">Correct Answer</label>
+                    <input type="text" id="CorrectAnswer" name="Correct Answer" required>
+                </div>
+                <!-- Prolific ID Field -->
+                <div class="form-field">
+                    <label for="ProlificID">Prolific ID</label>
+                    <input type="text" id="ProlificID" name="ProlificID" required>
+                </div>
+                <input type="hidden" id="Map" name="Map" value="">
+                <input type="hidden" id="MapCategory" name="Map Category" value="">
+                <button type="submit" class="submit-button">Submit</button>
+            </form>
+        </div>
     </div>
+
     <script>
         let currentMap = null;
+
+        // Function to toggle the consent button based on checkbox
+        function toggleConsentButton() {
+            const consentCheckbox = document.getElementById('consentCheckbox');
+            const consentButton = document.getElementById('consentButton');
+            consentButton.disabled = !consentCheckbox.checked;
+        }
+
+        // Function to show the survey and hide the consent screen
+        function showSurvey() {
+            document.getElementById('consentScreen').classList.add('hidden');
+            document.getElementById('surveyScreen').classList.remove('hidden');
+            getMapData();
+        }
 
         function getMapData() {
             fetch('/get_maps')
@@ -153,10 +200,8 @@
             });
         });
 
-        // On page load, get map data
-        window.onload = function() {
-            getMapData();
-        };
+        // Removed window.onload to prevent getMapData from running before consent
+        // The survey will start after the user consents by clicking "I Agree"
     </script>
 </body>
 </html>
