@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Instructions • Map‑Survey</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="instructions">
+  <script>
+    if(!localStorage.getItem('prolificID')) location.href='login.html';
+  </script>
+
+  <nav class="navbar">
+    <div class="brand"><a href="select_dataset.html">Map‑Survey</a></div>
+    <div class="nav-links">
+      <a href="select_dataset.html">Home</a>
+      <a href="instructions.html">Instructions</a>
+      <a id="logoutBtn" href="#">Log out</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Instructions</h1>
+    <div id="mdContent"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="/js/app.js" defer></script>
+</body>
+</html>
+
+
+
+
+
+
+
+

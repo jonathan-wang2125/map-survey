@@ -1,0 +1,216 @@
+<!-- questions.html (the "answering" mode page) -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Questions Mode</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #f0f0f0;
+      padding: 10px 20px;
+    }
+    .banner .nav-links a {
+      margin-right: 15px;
+      text-decoration: none;
+      color: #333;
+    }
+    .logout-button {
+      background-color: #dc3545;
+      color: white;
+      padding: 10px 20px;
+      font-size: 14px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+    }
+    .logout-button:hover {
+      background-color: #c82333;
+    }
+    .section {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .map-container {
+      width: 100%;
+      max-height: 500px;
+      overflow: auto;
+      margin: 20px 0;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .map-container img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <div class="nav-links">
+      <!-- For question-answering mode, point to answering instructions -->
+      <a id="instructionsLink" href="#">Instructions</a> |
+      <!-- Past Responses is from the old "map survey" mode; we keep it as a reference. -->
+      <a href="past_responses.html">Past Responses</a> |
+      <!-- "Past Answers" is for reviewing/editing answers in question-answering mode. Hidden by default. -->
+      <a id="pastAnswersLink" href="#" style="display:none;">Past Answers</a> |
+      <!-- Link back to map survey if you want to do "generating" mode -->
+      <a href="map_survey.html">Map Survey</a>
+    </div>
+    <div id="userSection">
+      <span id="userInfo"></span>
+      <button class="logout-button" onclick="logout()">Log Out</button>
+    </div>
+  </div>
+
+  <h1 style="text-align:center;">Questions Mode</h1>
+
+  <!-- We can switch modes via a constant in JavaScript, but let's default to "answering" here. -->
+  <div id="answerSection" class="section">
+    <h2>Answer a Question</h2>
+    <p id="questionText"></p>
+    <div class="map-container" id="questionMapContainer">
+      <!-- Map image will be displayed here -->
+    </div>
+    <form id="questionAnswerForm">
+      <div class="form-field">
+        <label for="qAnswer">Your Answer:</label>
+        <input type="text" id="qAnswer" name="answer" required>
+      </div>
+      <!-- Hidden field to store the questionIndex -->
+      <input type="hidden" id="questionIndex" name="questionIndex">
+      <button type="submit" class="submit-button">Submit Answer</button>
+    </form>
+  </div>
+
+  <!-- If we want the old "generate" mode, we could show/hide the block below:
+       For clarity, let's keep it hidden or remove it. -->
+  <div id="generateSection" class="section" style="display:none;">
+    <h2>Generate a Question (Original Survey Mode)</h2>
+    <div class="map-container" id="genMapContainer"></div>
+    <button id="genFullscreenMapBtn">Full Screen Map</button>
+    <button id="genDownloadMapBtn">Download Map</button>
+
+    <form id="questionGenerationForm">
+      <div class="form-field">
+        <label for="genQuestion">Question</label>
+        <textarea id="genQuestion" name="Question" rows="4" required></textarea>
+      </div>
+      <div class="form-field">
+        <label for="genQuestionType">Question Type</label>
+        <input type="text" id="genQuestionType" name="Question Type" required>
+      </div>
+      <div class="form-field">
+        <label for="genCorrectAnswer">Correct Answer</label>
+        <input type="text" id="genCorrectAnswer" name="Correct Answer" required>
+      </div>
+      <!-- Hidden fields populated from /get_maps -->
+      <input type="hidden" id="genMapFileName" name="mapFileName" value="">
+      <input type="hidden" id="genMapID" name="MapID" value="">
+      <input type="hidden" id="genLegendFileName" name="LegendFileName" value="">
+      <button type="submit" class="submit-button">Submit Generated Question</button>
+    </form>
+  </div>
+
+  <script>
+    const prolificID = localStorage.getItem('prolificID');
+    if (!prolificID) {
+      window.location.href = 'login.html';
+    }
+    document.getElementById('userInfo').textContent = "Logged in as: " + prolificID;
+
+    // We are in "answering" mode, so let's show the relevant links:
+    document.getElementById('instructionsLink').href = 'answering_instructions.html';
+    document.getElementById('pastAnswersLink').href = 'past_answers.html';
+    document.getElementById('pastAnswersLink').style.display = 'inline';
+
+    // Load the first question for the user
+    loadQuestion();
+
+    async function loadQuestion() {
+      try {
+        // Pass prolificID so the server knows what you’ve already answered
+        const res = await fetch('/get_questions?prolificID=' + encodeURIComponent(prolificID));
+        const data = await res.json();
+        if (data.done) {
+          alert('Thank you! All questions have enough responses or you have answered all available questions.');
+          document.getElementById('questionAnswerForm').style.display = 'none';
+          return;
+        }
+        window.currentQuestion = data.question; // store globally if needed
+        window.currentQuestionIndex = data.questionIndex;
+        displayQuestion(data.question, data.questionIndex);
+      } catch (error) {
+        console.error('Error fetching question data:', error);
+      }
+    }
+
+    function displayQuestion(question, questionIndex) {
+      document.getElementById('questionText').textContent = question.Question;
+      const mapContainer = document.getElementById('questionMapContainer');
+      mapContainer.innerHTML = '';
+
+      // Show the image associated with the question
+      // question.Map might be something like "Kansas_City_TAC.png"
+      const img = document.createElement('img');
+      img.src = '/maps/' + encodeURIComponent(question.Map);
+      img.alt = 'Map for question';
+      mapContainer.appendChild(img);
+
+      document.getElementById('questionIndex').value = questionIndex;
+    }
+
+    document.getElementById('questionAnswerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const answer = document.getElementById('qAnswer').value;
+      const questionIndex = document.getElementById('questionIndex').value;
+
+      // Our server’s “question” property is question.Question in the JSON,
+      // but we can pass it in a single field.
+      const payload = {
+        question: window.currentQuestion.Question,
+        answer,
+        prolificID,
+        questionIndex
+      };
+
+      try {
+        const res = await fetch('/submit_question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          alert('Error: ' + (errData.error || 'Unknown'));
+          return;
+        }
+        const result = await res.text();
+        alert(result);
+        document.getElementById('questionAnswerForm').reset();
+        loadQuestion();
+      } catch (error) {
+        console.error('Error submitting question answer:', error);
+      }
+    });
+
+    function logout() {
+      localStorage.removeItem('prolificID');
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+</html>
+
+
+

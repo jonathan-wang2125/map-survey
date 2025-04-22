@@ -1,0 +1,5 @@
+{"id":"112mapqa_Military","label":"Military QA 112","file":"112mapqa_Military.jsonl"}
+{"id":"newMilitaryForAnnotators","label":"New Military For Annotators","file":"newMilitaryForAnnotators.jsonl"}
+{"id":"mapqa_NaturalWorld_103", "label":"103 Natural World Maps", "file":"mapqa_NaturalWorld103.jsonl"}
+{"id":"mapqa_Aviation_120", "label":"102 Aviation Maps", "file":"mapqa_Aviation_120.jsonl"}
+{"id":"mapqa_Urban_120", "label":"120 Urban Maps", "file":"mapqa_Urban_120.jsonl"}

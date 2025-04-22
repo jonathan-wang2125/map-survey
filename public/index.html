@@ -1,207 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Map Survey</title>
-    <meta charset="UTF-8">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
-        }
-        .map-container {
-            text-align: center;
-        }
-        .map-display {
-            max-width: 100%;
-            height: auto;
-        }
-        .form-container {
-            margin-top: 30px;
-        }
-        .form-field {
-            margin-bottom: 15px;
-        }
-        .form-field label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .form-field input, .form-field textarea {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-        .submit-button {
-            padding: 10px 15px;
-            font-size: 16px;
-        }
-        /* Added styles */
-        .hidden {
-            display: none;
-        }
-        .consent-container {
-            max-width: 800px;
-            margin: 0 auto;
-            text-align: left;
-        }
-        .consent-button {
-            margin-top: 20px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Annotate • Map‑Survey</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY" defer></script>
 </head>
-<body>
-    <!-- Informed Consent Screen -->
-    <div id="consentScreen" class="consent-container">
-        <h1>Informed Consent</h1>
-        <p>Thank you for considering participation in this study. Please read the following information carefully:</p>
-        <ul>
-            <li>This survey is part of a scientific research project conducted by [Your Institution/University].</li>
-            <li>Your participation is completely voluntary, and you can withdraw at any time.</li>
-            <li>The data collected will be anonymous and used only for research purposes.</li>
-            <li>There are no known risks associated with this study.</li>
-            <li>By agreeing, you confirm that you are at least 18 years old and consent to participate.</li>
-        </ul>
-        <p>
-            <input id="consentCheckbox" type="checkbox" onclick="toggleConsentButton()"> I have read and understood the information and consent to participate.
-        </p>
-        <button id="consentButton" class="submit-button consent-button" onclick="showSurvey()" disabled>I Agree</button>
+<body data-page="annotate">
+  <script>
+    if(!localStorage.getItem('prolificID')) location.href='login.html';
+    if(!localStorage.getItem('datasetID'))  location.href='select_dataset.html';
+  </script>
+
+  <nav class="navbar">
+    <div class="brand"><a href="select_dataset.html">Map‑Survey</a></div>
+    <div class="nav-links">
+      <a href="select_dataset.html">Home</a>
+      <a href="instructions.html">Instructions</a>
+      <a id="logoutBtn" href="#">Log out</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Annotate Questions</h1>
+
+    <p id="questionText" style="font-weight:600;margin:.8rem 0;"></p>
+
+    <button id="popOutBtn"      style="margin-right:.5rem">Open full‑screen</button>
+    <button id="pastAnswersBtn">View / Edit Past Answers</button>
+
+    <p id="status"></p>
+
+    <div class="map-row">
+      <div id="locationMapContainer"></div>
+      <div id="questionMapContainer"></div>
     </div>
 
-    <!-- Survey Screen (Initially Hidden) -->
-    <div id="surveyScreen" class="hidden">
-        <h1>Map Survey</h1>
-        <div class="map-container" id="mapContainer">
-            <!-- The map will be displayed here -->
-        </div>
-        <div class="form-container">
-            <form id="surveyForm" method="POST" action="/submit">
-                <div class="form-field">
-                    <label for="Question">Question</label>
-                    <textarea id="Question" name="Question" rows="4" required></textarea>
-                </div>
-                <div class="form-field">
-                    <label for="QuestionType">Question Type</label>
-                    <input type="text" id="QuestionType" name="Question Type" required>
-                </div>
-                <div class="form-field">
-                    <label for="QuasiLogicalExpression">Quasi Logical Expression</label>
-                    <input type="text" id="QuasiLogicalExpression" name="Quasi Logical Expression" required>
-                </div>
-                <div class="form-field">
-                    <label for="ExpressionComplexity">Expression Complexity</label>
-                    <input type="text" id="ExpressionComplexity" name="Expression Complexity" required>
-                </div>
-                <div class="form-field">
-                    <label for="CorrectAnswer">Correct Answer</label>
-                    <input type="text" id="CorrectAnswer" name="Correct Answer" required>
-                </div>
-                <!-- Prolific ID Field -->
-                <div class="form-field">
-                    <label for="ProlificID">Prolific ID</label>
-                    <input type="text" id="ProlificID" name="ProlificID" required>
-                </div>
-                <input type="hidden" id="Map" name="Map" value="">
-                <input type="hidden" id="MapCategory" name="Map Category" value="">
-                <button type="submit" class="submit-button">Submit</button>
-            </form>
-        </div>
-    </div>
+    <form id="qaForm">
+      <label>Your Answer:
+        <input type="text" id="qAnswer" required>
+      </label>
 
-    <script>
-        let currentMap = null;
+      <label>Difficulty (1–10):
+        <input type="number" id="difficulty" min="1" max="10" required>
+      </label>
 
-        // Function to toggle the consent button based on checkbox
-        function toggleConsentButton() {
-            const consentCheckbox = document.getElementById('consentCheckbox');
-            const consentButton = document.getElementById('consentButton');
-            consentButton.disabled = !consentCheckbox.checked;
-        }
+      <button type="submit">Submit</button>
+    </form>
+  </div>
 
-        // Function to show the survey and hide the consent screen
-        function showSurvey() {
-            document.getElementById('consentScreen').classList.add('hidden');
-            document.getElementById('surveyScreen').classList.remove('hidden');
-            getMapData();
-        }
-
-        function getMapData() {
-            fetch('/get_maps')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.done) {
-                        alert('Thank you! All maps have received sufficient responses.');
-                        document.getElementById('surveyForm').style.display = 'none';
-                        document.getElementById('mapContainer').style.display = 'none';
-                    } else {
-                        currentMap = data.map;
-                        displayMap(currentMap.URL);
-                        document.getElementById('Map').value = currentMap.URL;
-                        document.getElementById('MapCategory').value = currentMap.Type;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching map data:', error);
-                });
-        }
-
-        function displayMap(url) {
-            const mapContainer = document.getElementById('mapContainer');
-            mapContainer.innerHTML = ''; // Clear any previous content
-
-            const fileExtension = url.split('.').pop().toLowerCase();
-
-            if (fileExtension === 'pdf') {
-                // Display PDF in an iframe
-                const iframe = document.createElement('iframe');
-                iframe.src = url;
-                iframe.style.width = '100%';
-                iframe.style.height = '600px';
-                iframe.frameBorder = '0';
-                mapContainer.appendChild(iframe);
-            } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(fileExtension)) {
-                // Display image in an img tag
-                const img = document.createElement('img');
-                img.src = url;
-                img.className = 'map-display';
-                mapContainer.appendChild(img);
-            } else {
-                // Unsupported file type
-                mapContainer.innerHTML = '<p>Unable to display this map format.</p>';
-            }
-        }
-
-        document.getElementById('surveyForm').addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            // Create an object from the form data
-            const formData = {};
-            const inputs = this.querySelectorAll('input[name], textarea[name]');
-            inputs.forEach(input => {
-                formData[input.name] = input.value;
-            });
-
-            fetch('/submit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            })
-            .then(response => response.text())
-            .then(data => {
-                alert('Data submitted successfully!');
-                // Clear the form
-                this.reset();
-                // Get next map
-                getMapData();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        });
-
-        // Removed window.onload to prevent getMapData from running before consent
-        // The survey will start after the user consents by clicking "I Agree"
-    </script>
+  <script src="/js/app.js" defer></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

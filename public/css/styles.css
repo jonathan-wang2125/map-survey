@@ -1,0 +1,77 @@
+/* ---------- Reset / base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#333;padding-top:60px}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer}
+
+/* ---------- Navbar ---------- */
+nav.navbar{
+  position:fixed;top:0;left:0;right:0;height:60px;
+  background:#004466;color:#fff;display:flex;
+  align-items:center;justify-content:space-between;padding:0 1rem;
+  z-index:1000
+}
+nav.navbar .nav-links{display:flex;gap:1rem}
+nav.navbar .nav-links a{padding:.5rem;border-radius:4px}
+nav.navbar .nav-links a:hover{background:rgba(255,255,255,.1)}
+
+/* ---------- Layout helpers ---------- */
+.container{max-width:900px;margin:auto;padding:1rem}
+
+input,select,textarea,button{font-size:1rem}
+button{
+  background:#006699;color:#fff;border:none;
+  padding:.6rem 1.2rem;border-radius:4px
+}
+button:disabled{opacity:.5;cursor:not-allowed}
+form label{display:block;margin-bottom:.5rem}
+form input,form textarea{
+  width:100%;padding:.5rem;margin:.2rem 0 1rem;
+  border:1px solid #ccc;border-radius:4px
+}
+
+/* ---------- Dataset grid ---------- */
+#datasetButtons{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:1rem;margin-top:1rem
+}
+#datasetButtons > div{
+  border:1px solid #ccc;border-radius:6px;
+  padding:1rem;text-align:center
+}
+
+/* ---------- Annotate page ---------- */
+#questionMapContainer img{width:100%;height:auto;display:block}
+#locationMapContainer{
+  width:100%;aspect-ratio:16 / 9;margin-top:.5rem;
+  border:1px solid #ccc;border-radius:4px;overflow:hidden
+}
+.map-row{display:flex;flex-direction:column;gap:1rem;margin-bottom:1rem}
+
+/* ---------- Past‑answer cards ---------- */
+.answer-card{
+  border:1px solid #ccc;padding:1rem;margin-bottom:1rem;border-radius:4px
+}
+.answer-card input{width:100%}
+.answer-card button{margin-top:.4rem}
+
+/* ---------- Utility buttons ---------- */
+a.dlBtn{
+  display:inline-block;margin-right:.5rem;font-size:.85rem;
+  background:#004466;color:#fff;padding:.3rem .6rem;border-radius:4px
+}
+a.dlBtn:hover{background:#006699}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
