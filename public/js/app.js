@@ -118,6 +118,10 @@ const Pages = {
       this.mapDiv = document.getElementById('locationMapContainer');
       this.form   = document.getElementById('qaForm');
 
+      this.badBox   = document.getElementById('badQuestion');
+      this.badText  = document.getElementById('badReason');
+      this.badLabel = document.getElementById('badReasonLabel');
+
       /* Buttons */
       document.getElementById('pastAnswersBtn')
         .addEventListener('click',()=>location.href='past_answers.html');
@@ -129,15 +133,38 @@ const Pages = {
           window.open(window.location.href,'_blank',feat);
         });
 
+      this.badBox.addEventListener('change', () => {
+        const on = this.badBox.checked
+        this.badText.style.display = on ? 'block' : 'none';
+        this.badLabel.style.display = on ? 'block' : 'none';
+        this.badText.required      = on;
+      });
+
       this.form.addEventListener('submit',e=>this.submit(e));
+
       await this.load();
     },
 
     async load(){
       this.status.textContent='Loading…';
-      const data = await fetch(
-        `/get_questions?prolificID=${Common.pid()}&dataset=${encodeURIComponent(Common.ds())}`
-      ).then(r=>r.json());
+
+      const pid = Common.pid();
+      const ds  = Common.ds();
+
+      const [data, answered, { total }] = await Promise.all([
+        fetch(`/get_questions?prolificID=${pid}&dataset=${encodeURIComponent(ds)}`)
+          .then(r => r.json()),
+        fetch(`/qresponses/${pid}?dataset=${encodeURIComponent(ds)}`)
+          .then(r => r.json()).then(j => j.responses.length + 1),
+        fetch(`/dataset_count/${ds}`).then(r => r.json())
+      ]);
+
+      const bar  = document.getElementById('saveProgress');
+      const txt  = document.getElementById('progressText');
+      bar.style.display = 'block';
+      bar.max   = total;
+      bar.value = answered;
+      txt.textContent = `${answered} / ${total}`;  
 
       if (data.error){ this.showMsg(data.error); return; }
       if (data.done ){ this.showMsg('All done!'); return; }
@@ -184,107 +211,166 @@ const Pages = {
       // }
     },
 
-    async submit(e){
+    async submit (e) {
       e.preventDefault();
-      const q=this.current.question;
-      const payload={
-        dataset:Common.ds(), prolificID:Common.pid(),
-        questionIndex:this.current.questionIndex,
-        QID:q.QID, question:q.Question,
-        answer:document.getElementById('qAnswer').value,
-        difficulty:document.getElementById('difficulty').value
+    
+      /* show progress bar */
+      // const bar = document.getElementById('saveProgress');
+      // bar.style.display = 'block';
+      // bar.removeAttribute('value');          // indeterminate
+    
+      /* disable form while saving */
+      this.form.querySelector('button[type=submit]').disabled = true;
+    
+      const q = this.current.question;
+      const payload = {
+        dataset:       Common.ds(),
+        prolificID:    Common.pid(),
+        questionIndex: this.current.questionIndex,
+        QID:           q.uid,
+        question:      q.Question,
+        answer:        document.getElementById('qAnswer').value,
+        difficulty:    document.getElementById('difficulty').value,
+        badQuestion:   this.badBox.checked,
+        badReason:     this.badBox.checked ? this.badText.value : ''
       };
-      const r=await fetch('/submit_question',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload)});
-      const j=await r.json();
-      if (!r.ok){ alert(j.error); return; }
-      alert('Saved!');
+    
+      const resp = await fetch('/submit_question', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+    
+      /* hide progress bar & re-enable submit */
+      // bar.style.display = 'none';
+      this.form.querySelector('button[type=submit]').disabled = false;
+    
+      if (!resp.ok) {                        // show error only if it failed
+        const j = await resp.json().catch(()=>({}));
+        this.status.textContent = j.error || 'Save failed';
+        return;
+      }
+    
+      /* clear form & load next question (no alert) */
       this.form.reset();
       this.load();
     }
   },
 
-/* ---------- past answers ---------- */
-past: {
-  async init () {
-    Common.ensureLogin();
-    Common.initNavbar();
-    if (!Common.ds()) location.href = '/select_dataset.html';
+  /* ---------- past answers ---------- */
+  past: {
+    async init () {
+      Common.ensureLogin();
+      Common.initNavbar();
+      if (!Common.ds()) location.href = '/select_dataset.html';
 
-    const wrap = document.getElementById('answersList');
-    wrap.textContent = 'Loading…';
+      const wrap = document.getElementById('answersList');
+      wrap.textContent = 'Loading…';
 
-    /* fetch all answers the server has for this user + dataset */
-    const rsp = await fetch(
-      `/qresponses/${Common.pid()}?dataset=${encodeURIComponent(Common.ds())}`
-    );
-    if (!rsp.ok) { wrap.textContent = 'Server error – try again later.'; return; }
+      const rsp = await fetch(
+        `/qresponses/${Common.pid()}?dataset=${encodeURIComponent(Common.ds())}`
+      );
+      if (!rsp.ok) { wrap.textContent = 'Server error – try again later.'; return; }
 
-    const { responses } = await rsp.json();
-    if (!responses.length) { wrap.textContent = 'No answers yet.'; return; }
+      const { responses } = await rsp.json();
+      if (!responses.length) { wrap.textContent = 'No answers yet.'; return; }
 
-    wrap.innerHTML = '';   // clear the loading text
+      wrap.innerHTML = '';
 
-    responses.forEach(r => {
-      const card = document.createElement('div');
-      card.className = 'answer-card';
-      card.innerHTML = `
-        <p><strong>Q:</strong> ${r.question}</p>
+      responses.forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'answer-card';
 
-        <label>Answer:
-          <input type="text" value="${r.answer}">
-        </label>
+        /* -------- inner HTML -------- */
+        card.innerHTML = `
+          <p><strong>Q:</strong> ${r.question}</p>
 
-        <label>Difficulty:
-          <input type="number" min="1" max="10"
-                 value="${r.difficulty ?? ''}">
-        </label>
+          <label>Your Answer:
+            <input type="text" value="${r.answer}">
+          </label>
 
-        <div style="margin-top:.4rem;">
-          <button class="editBtn">Edit</button>
-          ${r.mapFile ? '<button class="mapBtn">Open map</button>' : ''}
-        </div>
-      `;
+          <label>Difficulty (1-10):
+            <input type="number" min="1" max="10" value="${r.difficulty ?? ''}">
+          </label>
 
-      const ansIn  = card.querySelector('input[type=text]');
-      const diffIn = card.querySelector('input[type=number]');
-      const editBt = card.querySelector('.editBtn');
-      const mapBt  = card.querySelector('.mapBtn');
+          <label class="bad-label">
+            <span class="inline-flex">
+              <input type="checkbox" ${r.badQuestion ? 'checked' : ''}>
+              Bad&nbsp;Question
+            </span
+          </label>
 
-      /* start in read-only mode */
-      ansIn.disabled = diffIn.disabled = true;
+          <label id="badReasonLabel"
+              for="badReason"
+              style="display:none; font-weight:500; margin-bottom:.25rem;${r.badQuestion ? '' : 'display:none;'}">
+            Provide an answer and difficulty assuming the question is fixed
+          </label>
+          <textarea rows="1"
+                    placeholder="Why is it bad / ambiguous / impossible?"
+                    style="width:100%;margin-top:.4rem;resize:vertical;${
+                      r.badQuestion ? '' : 'display:none;'
+                    }">${r.badReason ?? ''}</textarea>
 
-      /* ─── Edit / Save toggle ─── */
-      editBt.addEventListener('click', async () => {
-        const editing = ansIn.disabled;            // entering edit mode?
-        ansIn.disabled = diffIn.disabled = !editing;
-        editBt.textContent = editing ? 'Save' : 'Edit';
+          <div style="margin-top:.4rem;">
+            <button class="editBtn">Edit</button>
+            ${
+              r.mapFile
+                ? `<button class="mapBtn" data-file="${encodeURIComponent(r.mapFile)}">
+                    Open map
+                  </button>`
+                : ''
+            }
+          </div>
+        `;
 
-        if (!editing) {                            // now in “Save” click
-          await fetch(`/edit_qresponse/${Common.pid()}`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({
-              dataset:    Common.ds(),
-              responseID: r.responseID,
-              answer:     ansIn.value,
-              difficulty: diffIn.value
-            })
-          });
+        /* -------- grab elements -------- */
+        const ansIn   = card.querySelector('input[type=text]');
+        const diffIn  = card.querySelector('input[type=number]');
+        const badBox  = card.querySelector('input[type=checkbox]');
+        const reason  = card.querySelector('textarea');
+        const editBt  = card.querySelector('.editBtn');
+        const mapBt   = card.querySelector('.mapBtn');
+
+        /* read-only by default */
+        [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = true));
+
+        /* show/hide textarea with checkbox */
+        badBox.addEventListener('change', () => {
+          reason.style.display = badBox.checked ? 'block' : 'none';
+        });
+
+        /* edit / save toggle */
+        editBt.addEventListener('click', async () => {
+          const editing = ansIn.disabled;
+          const setDis  = !editing;
+          [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = setDis));
+          editBt.textContent = editing ? 'Save' : 'Edit';
+
+          if (!editing) {                      // now saving
+            await fetch(`/edit_qresponse/${Common.pid()}`, {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({
+                dataset:     Common.ds(),
+                responseID:  r.responseID,
+                answer:      ansIn.value,
+                difficulty:  diffIn.value,
+                badQuestion: badBox.checked,
+                badReason:   reason.value
+              })
+            });
+          }
+        });
+
+        /* open map */
+        if (mapBt) {
+          mapBt.addEventListener('click', () =>
+            window.open(`/maps/${mapBt.dataset.file}`, '_blank'));
         }
+
+        wrap.append(card);
       });
-
-      /* ─── Open map in new tab ─── */
-      if (mapBt) {
-        mapBt.addEventListener('click', () =>
-          window.open(`/maps/${encodeURIComponent(r.mapFile)}`, '_blank'));
-      }
-
-      wrap.append(card);
-    });
-  }
-},
-
+    }
+  },
 
   /* ---------- instructions ---------- */
   instructions: {

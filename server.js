@@ -166,6 +166,13 @@ app.post('/admin/assign', express.json(), async (req,res) => {
 app.get('/datasets', (_req, res) =>
   res.json(DATASETS.map(({ id, label }) => ({ id, label }))));
 
+/* quick count for progress bar */
+app.get('/dataset_count/:ds', async (req, res) => {
+  const ds = req.params.ds;
+  const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
+  res.json({ total });
+});
+
 /* login (ensure user exists) */
 app.post('/login', async (req, res) => {
   const { prolificID } = req.body;
@@ -240,8 +247,17 @@ app.post('/submit_question', async (req, res) => {
   await redis.set(
     v1AnswerKey(prolificID, dataset, uid),
     JSON.stringify({
-      responseID: uid, dataset, QID: uid, question, answer,
-      prolificID, questionIndex, difficulty, timestamp: Date.now()
+      responseID: uid,
+      dataset, 
+      QID: uid,
+      question,
+      answer,
+      prolificID,
+      questionIndex,
+      difficulty,
+      badQuestion: req.body.badQuestion ?? false,
+      badReason: req.body.badReason ?? '',
+      timestamp: Date.now()
     })
   );
   res.json({ success: true });
@@ -306,7 +322,7 @@ app.get('/qresponses/:pid', async (req, res) => {
 /* edit an existing answer */
 app.post('/edit_qresponse/:pid', async (req, res) => {
   const { pid } = req.params;
-  const { dataset, responseID, answer, difficulty } = req.body;
+  const { dataset, responseID, answer, difficulty, badQuestion, badReason } = req.body;
   const key = v1AnswerKey(pid, dataset, responseID);
   const str = await redis.get(key);
   if (!str) return res.status(404).json({ error: 'not found' });
@@ -317,6 +333,8 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
 
   obj.answer     = answer;
   obj.difficulty = difficulty;
+  obj.badQuestion = !!badQuestion;
+  obj.badReason = badQuestion ? (badReason || '') : '';
   obj.timestamp  = Date.now();
   await redis.set(key, JSON.stringify(obj));
   res.json({ success: true });

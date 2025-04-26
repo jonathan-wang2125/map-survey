@@ -46,40 +46,31 @@
         <input type="number" id="difficulty" min="1" max="10" required>
       </label>
 
+      <label class="bad-label">
+        <span class="inline-flex">
+          <input type="checkbox" id="badQuestion">
+          Bad Question
+        </span>
+      </label>
+      
+      <label id="badReasonLabel"
+            for="badReason"
+            style="display:none; font-weight:500; margin-bottom:.25rem;">
+        Provide an answer and difficulty assuming the question is fixed
+      </label>
+      <textarea id="badReason"
+                placeholder="Why is it a bad / ambiguous / impossible question?"
+                rows="1" style="width:100%;display:none;margin-top:.5rem;"></textarea>
+      
       <button type="submit">Submit</button>
+
+      <div class="progress-wrapper">
+        <progress id="saveProgress" value="0" max="1"></progress>
+        <span id="progressText">0 / 0</span>
+      </div>
     </form>
   </div>
 
   <script src="/js/app.js" defer></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
