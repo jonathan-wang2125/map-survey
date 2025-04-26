@@ -16,7 +16,7 @@ nav.navbar .nav-links a{padding:.5rem;border-radius:4px}
 nav.navbar .nav-links a:hover{background:rgba(255,255,255,.1)}
 
 /* ---------- Layout helpers ---------- */
-.container{max-width:900px;margin:auto;padding:1rem}
+.container{max-width:85%;margin:auto;padding:1rem}
 
 input,select,textarea,button{font-size:1rem}
 button{

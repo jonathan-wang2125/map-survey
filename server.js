@@ -12,16 +12,35 @@ const { createClient } = require('redis');
 const sharp         = require('sharp');
 
 /* ───────────────  1. DATASETS  ─────────────── */
-const dsLines = fs.readFileSync(
-  path.join(__dirname, 'data', 'datasets.jsonl'), 'utf8'
-).split('\n').filter(Boolean);
+let DATASETS      = [];           // [{id,label}, …]
+let DATASET_IDS   = [];           // [id, id, …]
+let DATASETS_MAP  = {};           // id → {id,label}
 
-const DATASETS     = dsLines.map(l => JSON.parse(l));
-const DATASET_IDS  = DATASETS.map(d => d.id);
-const DATASETS_MAP = DATASETS.reduce((m, d) => (m[d.id] = d, m), {});
-
-const FIRST_DS      = DATASET_IDS[0];
 const MAX_RESPONSES = 10;
+
+/**
+ * Populate DATASETS / DATASET_IDS / DATASETS_MAP from Redis.
+ *   – v1:datasets         : SET of dataset IDs
+ *   – label defaults to the ID itself; extend as needed.
+ */
+async function loadDatasetsFromRedis() {
+  const ids = await redis.sMembers('v1:datasets');
+  ids.sort();                               // stable order
+
+  DATASETS = ids.map(id => ({ id, label: id }));
+  DATASET_IDS  = ids;
+  DATASETS_MAP = DATASETS.reduce((m, d) => (m[d.id] = d, m), {});
+
+  console.log(`Datasets loaded from Redis: ${ids.join(', ')}`);
+}
+
+async function getDatasetMeta(dsID) {
+  const raw = await redis.get(`v1:datasets:${dsID}:meta`);
+  if (!raw) return { label: dsID, description: '' };   // sensible defaults
+  try   { return JSON.parse(raw); }
+  catch  { return { label: dsID, description: '' }; }
+}
+
 
 /* ───────────────  2. APP & REDIS  ───────────── */
 const app = express();
@@ -30,47 +49,107 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/maps', express.static(path.join(__dirname, 'maps')));
 
 const redis = createClient({ url: 'redis://localhost:6379' });
-redis.connect().catch(console.error);
 
-/* ───────────────  3. QUESTIONS CACHE  ───────── */
-const questions = {};
+/* prefix helpers --------------------------------------------------------- */
+const v1          = key => `v1:${key}`;
+const v1Users     = v1('usernames');                // set of pids
+const v1Assign    = pid => v1(`assignments:${pid}`);// set of datasets for a pid
+const v1AnswerKey = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
 
+/* ---------- Question normaliser ---------- */
 function normalise(q) {
-  if (!q.QID      && q.uid)      q.QID      = q.uid;
+  // canon-field: uid
+  if (q.uid == null && q.QID != null) q.uid = q.QID;
+
+  // remove deprecated alias so we don’t rely on it later
+  delete q.QID;
+
+  // keep legacy client fields consistent
   if (!q.Question && q.question) q.Question = q.question;
   if (!q.Map      && q.map)      q.Map      = q.map;
   if (!q.locations)              q.locations = [];
+
   return q;
 }
 
-async function loadQuestionFiles() {
-  for (const ds of DATASETS) {
-    const fp  = path.join(__dirname, 'data', ds.file);
-    const arr = fs.readFileSync(fp, 'utf8')
-                  .split('\n').filter(Boolean)
-                  .map(l => normalise(JSON.parse(l)));
-    questions[ds.id] = arr;
-    console.log(`Loaded ${arr.length} questions for ${ds.id}`);
+/* ───────────────  3. QUESTIONS CACHE  ───────── */
+const questionsCache = {};
+
+/**
+ * Return an array of questions for <dsID>.
+ * If the set in Redis is empty, cache and return [] without calling MGET.
+ */
+async function getDatasetQuestions(dsID) {
+  if (questionsCache[dsID]) return questionsCache[dsID];
+
+  const uids = await redis.sMembers(`v1:datasets:${dsID}`);
+  if (uids.length === 0) {
+    return (questionsCache[dsID] = []);
   }
+
+  const keys = uids.map(uid => `v1:datasets:${dsID}:${uid}`);
+  const vals = await redis.mGet(keys);
+
+  const arr = [];
+  vals.forEach(v => {
+    if (!v) return;                          // null entry – key missing
+    try {
+      const obj = JSON.parse(v.toString());  // ← convert Buffer → string
+      arr.push(normalise(obj));
+    } catch (err) {
+      console.warn('Bad question JSON:', err);
+    }
+  });
+
+  questionsCache[dsID] = arr;
+  return arr;
 }
 
 /* ───────────────  4. USER HELPERS  ───────────── */
 async function ensureUser(pid) {
-  const key = `user:${pid}`;
-  if (!await redis.exists(key))
-    await redis.hSet(key, 'prolificID', pid);
+  await redis.sAdd(v1Users, pid);
 }
 
 async function userFinished(pid, dsID) {
-  const total = questions[dsID].length;
-  for (let i = 0; i < total; i++) {
-    if (!await redis.sIsMember(`questionUsers:${dsID}:${i}`, pid))
-      return false;
+  const qs = await getDatasetQuestions(dsID);
+  for (const q of qs) {
+    const uid = q.uid || q.QID;
+    if (!await redis.exists(v1AnswerKey(pid, dsID, uid))) return false;
   }
   return true;
 }
 
+async function setAccess (pid, datasetID, allow) {
+  if (allow)
+    await redis.sAdd(v1Assign(pid), datasetID);
+  else
+    await redis.sRem(v1Assign(pid), datasetID);
+}
+
 /* ───────────────  5. ROUTES  ─────────────────── */
+
+/* admin */
+app.get('/admin/users',      async (req,res) =>
+  res.json(await redis.sMembers(v1Users)));          // <- update if you store users elsewhere
+
+app.get('/admin/datasets', async (_req, res) => {
+  const metaArr = await Promise.all(
+    DATASET_IDS.map(async id => {
+      const meta = await getDatasetMeta(id);
+      return { id, ...meta };
+    })
+  );
+  res.json(metaArr);
+});
+
+app.get('/admin/user_datasets/:pid', async (req,res) =>
+  res.json(await redis.sMembers(v1Assign(req.params.pid))));
+
+app.post('/admin/assign', express.json(), async (req,res) => {
+  const { prolificID, datasetID, allow } = req.body;
+  try { await setAccess(prolificID, datasetID, allow); res.json({ok:true}); }
+  catch (e) { console.error(e); res.status(500).json({error:'db'}); }
+});
 
 /* datasets list */
 app.get('/datasets', (_req, res) =>
@@ -100,19 +179,28 @@ app.get('/thumb', async (req, res) => {
 /* get next unanswered question */
 app.get('/get_questions', async (req, res) => {
   const { prolificID, dataset } = req.query;
-  if (!prolificID || !dataset) return res.status(400).json({ error: 'params' });
-  if (!DATASETS_MAP[dataset])   return res.status(400).json({ error: 'invalid ds' });
+  if (!prolificID || !dataset)      return res.status(400).json({ error: 'params' });
+  if (!DATASET_IDS.includes(dataset)) return res.status(400).json({ error: 'invalid ds' });
+
   await ensureUser(prolificID);
 
-  if (dataset !== FIRST_DS && !await userFinished(prolificID, FIRST_DS))
-    return res.status(403).json({ error: `Please finish "${FIRST_DS}" first.` });
+  const qs = await getDatasetQuestions(dataset);
 
-  for (let i = 0; i < questions[dataset].length; i++) {
-    const setKey = `questionUsers:${dataset}:${i}`;
-    if (await redis.sIsMember(setKey, prolificID)) continue;
-    const count = await redis.sCard(setKey);
-    if (dataset === FIRST_DS || count < MAX_RESPONSES) {
-      return res.json({ done: false, questionIndex: i, question: questions[dataset][i] });
+  for (let i = 0; i < qs.length; i++) {
+    const q   = qs[i];
+    const uid = q.uid || q.QID;
+
+    /* already answered by this user? */
+    if (await redis.exists(v1AnswerKey(prolificID, dataset, uid))) continue;
+
+    /* how many total answers exist for this question? */
+    let count = 0;
+    for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
+      count++;
+    }
+
+    if (count < MAX_RESPONSES) {
+      return res.json({ done: false, questionIndex: i, question: q });
     }
   }
   res.json({ done: true });
@@ -122,72 +210,72 @@ app.get('/get_questions', async (req, res) => {
 app.post('/submit_question', async (req, res) => {
   const { dataset, prolificID, questionIndex,
           question, QID, answer, difficulty } = req.body;
-  if (!prolificID || !dataset) return res.status(400).json({ error: 'params' });
-  if (!DATASETS_MAP[dataset])   return res.status(400).json({ error: 'invalid ds' });
+  if (!prolificID || !dataset)       return res.status(400).json({ error: 'params' });
+  if (!DATASET_IDS.includes(dataset)) return res.status(400).json({ error: 'invalid ds' });
+
   await ensureUser(prolificID);
 
-  if (dataset !== FIRST_DS && !await userFinished(prolificID, FIRST_DS))
-    return res.status(403).json({ error: `Please finish "${FIRST_DS}" first.` });
-
-  const setKey = `questionUsers:${dataset}:${questionIndex}`;
-  if (await redis.sIsMember(setKey, prolificID))
-    return res.status(400).json({ error: 'Already answered' });
-  if (dataset !== FIRST_DS && await redis.sCard(setKey) >= MAX_RESPONSES)
+  /* capacity check */
+  const qArr = await getDatasetQuestions(dataset);
+  const uid  = QID || (qArr[questionIndex]?.uid);
+  let count  = 0;
+  for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
+    count++;
+  }
+  if (count >= MAX_RESPONSES)
     return res.status(400).json({ error: 'No slots left' });
 
-  await redis.sAdd(setKey, prolificID);
-
-  const rid = `qresp:${Date.now()}`;
-  await redis.lPush(`user:${prolificID}:qresponses:${dataset}`, rid);
-
+  /* store answer */
   await redis.set(
-    `user:${prolificID}:qresponse:${dataset}:${rid}`,
+    v1AnswerKey(prolificID, dataset, uid),
     JSON.stringify({
-      responseID: rid, dataset, QID, question, answer,
+      responseID: uid, dataset, QID: uid, question, answer,
       prolificID, questionIndex, difficulty, timestamp: Date.now()
     })
   );
   res.json({ success: true });
 });
 
+/* datasets visible to a single user */
+app.get('/user_datasets/:pid', async (req, res) => {
+  const pid   = req.params.pid;
+  const ids   = await redis.sMembers(`v1:assignments:${pid}`);   // v1 set
+  const list  = ids
+    .filter(id => DATASETS_MAP[id])                              // ignore unknown
+    .map(id => ({ id, label: DATASETS_MAP[id].label }));
+  res.json(list);
+});
+
+
 /* fetch past answers – no dummy rows remain, so just return all rows
    that belong to this <pid> & <dataset> (list key guarantees that). */
-   app.get('/qresponses/:pid', async (req, res) => {
-    const { dataset } = req.query;
-    const pid = req.params.pid;
-  
-    if (!dataset) {
-      return res.status(400).json({ error: "dataset query param required" });
-    }
-  
-    const pattern = `user:${pid}:qresponse:*`;
-    const out = [];
-  
-    for await (const key of redis.scanIterator({ MATCH: pattern })) {
-      const str = await redis.get(key);
-      if (!str) continue;
-  
-      let obj;
-      try { obj = JSON.parse(str); }
-      catch { continue; }
-  
-      if (
-        obj &&
-        obj.prolificID === pid &&
-        obj.dataset     === dataset
-      ) {
-        out.push(obj);
-      }
-    }
-  
-    res.json({ responses: out });
-  });
+  app.get('/qresponses/:pid', async (req, res) => {
+  const { dataset } = req.query;
+  const pid = req.params.pid;
+  if (!dataset) return res.status(400).json({ error: 'dataset query param required' });
+
+  const pattern = `v1:${pid}:${dataset}:*`;
+  const out = [];
+
+  for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
+    const key = keyBuf.toString();          // ← convert Buffer → string
+    const str = await redis.get(key);
+    if (!str) continue;
+
+    let obj;
+    try { obj = JSON.parse(str); } catch { continue; }
+
+    out.push(obj);
+  }
+
+  res.json({ responses: out });
+});
 
 /* edit an existing answer */
 app.post('/edit_qresponse/:pid', async (req, res) => {
   const { pid } = req.params;
   const { dataset, responseID, answer, difficulty } = req.body;
-  const key = `user:${pid}:qresponse:${dataset}:${responseID}`;
+  const key = v1AnswerKey(pid, dataset, responseID);
   const str = await redis.get(key);
   if (!str) return res.status(404).json({ error: 'not found' });
 
@@ -204,27 +292,7 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
 
 /* ───────────────  6. BOOT  ───────────────────── */
 (async () => {
-  await loadQuestionFiles();
+  await redis.connect();
+  await loadDatasetsFromRedis();            // ← new
   app.listen(3000, () => console.log('▶  http://localhost:3000'));
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

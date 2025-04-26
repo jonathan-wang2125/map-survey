@@ -45,56 +45,59 @@ const Pages = {
 
   /* ---------- dataset select ---------- */
   select: {
-    async init() {
-      Common.ensureLogin(); Common.initNavbar();
-      const pid       = Common.pid();
-      const datasets  = await fetch('/datasets').then(r=>r.json());
-      const firstID   = datasets[0].id;
-
-      /* ask once whether user finished first dataset */
-      const doneFirst = (await fetch(
-        `/get_questions?prolificID=${pid}&dataset=${encodeURIComponent(firstID)}`
-      ).then(r=>r.json())).done;
-
-      const wrap = document.getElementById('datasetButtons');
-
-      /* Build the grid */
-      for (const ds of datasets){
+    async init () {
+      Common.ensureLogin();
+      Common.initNavbar();
+  
+      const pid   = Common.pid();
+      const wrap  = document.getElementById('datasetButtons');
+      wrap.textContent = 'Loading…';
+  
+      /* datasets this user may access */
+      const datasets = await fetch(`/user_datasets/${pid}`).then(r => r.json());
+  
+      if (!datasets.length) {
+        wrap.textContent = 'No datasets have been assigned to your account.';
+        return;
+      }
+  
+      wrap.innerHTML = '';  // clear loading text
+  
+      for (const ds of datasets) {
         const card = document.createElement('div');
-
-        /* dataset title */
+  
+        /* title */
         const h = document.createElement('h3');
         h.textContent = ds.label;
         card.append(h);
-
-        /* Annotate button */
+  
+        /* Annotate */
         const anno = document.createElement('button');
         anno.textContent = 'Annotate';
-        anno.disabled = (ds.id!==firstID && !doneFirst);
-        anno.onclick  = () => {
+        anno.onclick = () => {
           localStorage.setItem('datasetID', ds.id);
-          location.href='index.html';
+          location.href = 'index.html';
         };
         card.append(anno);
-
-        /* Past answers button */
+  
+        /* Past answers */
         const past = document.createElement('button');
         past.textContent = 'Past answers';
-        past.disabled = true;          // default; we enable below if any answer exists
-        past.onclick  = () => {
+        past.disabled = true;
+        past.onclick = () => {
           localStorage.setItem('datasetID', ds.id);
-          location.href='past_answers.html';
+          location.href = 'past_answers.html';
         };
         card.append(past);
-
-        /* async check whether user has any responses */
-        (async ()=>{
+  
+        /* enable Past answers if any exist */
+        (async () => {
           const j = await fetch(
             `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
-          ).then(r=>r.json());
+          ).then(r => r.json());
           if (j.responses.length) past.disabled = false;
         })();
-
+  
         wrap.append(card);
       }
     }
@@ -292,13 +295,54 @@ past: {
   }
 };
 
+/* ---------- admin ---------- */
+Pages.admin = {
+  async init () {
+    /* 1 . fetch data */
+    const [users, datasets] = await Promise.all([
+      fetch('/admin/users').then(r=>r.json()),
+      fetch('/admin/datasets').then(r=>r.json())
+    ]);
+
+    /* 2 . build empty table */
+    const tbl   = document.getElementById('matrix');
+    const head  = tbl.insertRow();
+    head.insertCell();                       // top-left empty
+    datasets.forEach(d => head.insertCell().textContent = d.label);
+
+    /* 3 . rows = users */
+    for (const pid of users) {
+      const row  = tbl.insertRow();
+      row.insertCell().textContent = pid;
+
+      const current = new Set(
+        await fetch(`/admin/user_datasets/${pid}`).then(r=>r.json())
+      );
+
+      datasets.forEach(ds => {
+        const cell = row.insertCell();
+        const cb   = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = current.has(ds.id);
+        cb.addEventListener('change', () => this.toggle(pid, ds.id, cb.checked));
+        cell.append(cb);
+      });
+    }
+
+    document.getElementById('status').remove();
+  },
+
+  async toggle (pid, dsID, allow) {
+    const r = await fetch('/admin/assign',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prolificID:pid, datasetID:dsID, allow})
+    });
+    if (!r.ok) alert('DB error – reverted');
+  }
+};
+
+
 /* ------------------------------------------------
  * Auto‑boot when DOM ready
  * ------------------------------------------------ */
 document.addEventListener('DOMContentLoaded', ()=>
   Pages[document.body.dataset.page]?.init?.());
-
-
-
-       
-
