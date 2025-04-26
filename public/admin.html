@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin • Dataset Access</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    table{border-collapse:collapse;width:100%;margin-top:1rem}
+    th,td{border:1px solid #ccc;padding:.4rem;text-align:center}
+    th{background:#eee}
+  </style>
+</head>
+<body data-page="admin">
+  <nav class="navbar">
+    <div class="brand"><a href="select_dataset.html">Map-Survey Admin</a></div>
+    <div class="nav-links"><a href="select_dataset.html">User view</a></div>
+  </nav>
+
+  <div class="container">
+    <h1>Dataset ⇄ User Access</h1>
+
+    <label><strong>Select user:</strong></label>
+    <input id="userFilter" placeholder="type to filter users…" style="margin-right:.3rem;">
+    <select id="userSelect" size="8" style="min-width:220px;"></select>
+
+    <div id="status" style="margin:.5rem 0;">Loading…</div>
+    <table id="dsTable"></table>
+  </div>
+
+  <script src="/js/app.js" defer></script>
+</body>
+</html>

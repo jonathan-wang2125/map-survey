@@ -144,6 +144,8 @@ const Pages = {
 
       this.current=data;
       this.render();
+
+      this.status.textContent = '';
     },
 
     showMsg(msg){
@@ -173,13 +175,13 @@ const Pages = {
       }
 
       /* optional geo markers */
-      this.mapDiv.innerHTML='';
-      if (q.locations?.length){
-        const m=new google.maps.Map(this.mapDiv,{center:q.locations[0],zoom:8});
-        q.locations.forEach(p=>new google.maps.Marker({position:p,map:m}));
-      }else{
-        this.mapDiv.textContent='No locations.';
-      }
+      // this.mapDiv.innerHTML='';
+      // if (q.locations?.length){
+      //   const m=new google.maps.Map(this.mapDiv,{center:q.locations[0],zoom:8});
+      //   q.locations.forEach(p=>new google.maps.Marker({position:p,map:m}));
+      // }else{
+      //   this.mapDiv.textContent='No locations.';
+      // }
     },
 
     async submit(e){
@@ -203,40 +205,28 @@ const Pages = {
     }
   },
 
-  /* ---------- past answers ---------- */
+/* ---------- past answers ---------- */
 past: {
   async init () {
-    Common.ensureLogin(); Common.initNavbar();
+    Common.ensureLogin();
+    Common.initNavbar();
     if (!Common.ds()) location.href = '/select_dataset.html';
 
     const wrap = document.getElementById('answersList');
-    wrap.innerHTML = 'Loading…';
+    wrap.textContent = 'Loading…';
 
+    /* fetch all answers the server has for this user + dataset */
     const rsp = await fetch(
       `/qresponses/${Common.pid()}?dataset=${encodeURIComponent(Common.ds())}`
     );
-    if (!rsp.ok) {
-      wrap.textContent = 'Server error – try again later.'; return;
-    }
+    if (!rsp.ok) { wrap.textContent = 'Server error – try again later.'; return; }
 
     const { responses } = await rsp.json();
+    if (!responses.length) { wrap.textContent = 'No answers yet.'; return; }
 
-    /* strict client‑side filter (safety belt) */
-    const real = responses.filter(r =>
-      r &&
-      r.prolificID === Common.pid() &&
-      // r.dataset     === Common.ds() &&
-      r.question && r.question !== '(dummy)' &&
-      r.answer   && r.answer   !== '(none)'
-    );
+    wrap.innerHTML = '';   // clear the loading text
 
-    if (!real.length) {
-      wrap.textContent = 'No answers yet.'; return;
-    }
-
-    wrap.innerHTML = '';   // clear “Loading…”
-
-    real.forEach(r => {
+    responses.forEach(r => {
       const card = document.createElement('div');
       card.className = 'answer-card';
       card.innerHTML = `
@@ -251,24 +241,29 @@ past: {
                  value="${r.difficulty ?? ''}">
         </label>
 
-        <button class="editBtn">Edit</button>
+        <div style="margin-top:.4rem;">
+          <button class="editBtn">Edit</button>
+          ${r.mapFile ? '<button class="mapBtn">Open map</button>' : ''}
+        </div>
       `;
 
       const ansIn  = card.querySelector('input[type=text]');
       const diffIn = card.querySelector('input[type=number]');
-      const btn    = card.querySelector('.editBtn');
+      const editBt = card.querySelector('.editBtn');
+      const mapBt  = card.querySelector('.mapBtn');
 
+      /* start in read-only mode */
       ansIn.disabled = diffIn.disabled = true;
 
-      btn.addEventListener('click', async () => {
-        const editing = ansIn.disabled;
+      /* ─── Edit / Save toggle ─── */
+      editBt.addEventListener('click', async () => {
+        const editing = ansIn.disabled;            // entering edit mode?
         ansIn.disabled = diffIn.disabled = !editing;
-        btn.textContent = editing ? 'Save' : 'Edit';
+        editBt.textContent = editing ? 'Save' : 'Edit';
 
-        if (!editing) {
+        if (!editing) {                            // now in “Save” click
           await fetch(`/edit_qresponse/${Common.pid()}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({
               dataset:    Common.ds(),
               responseID: r.responseID,
@@ -279,6 +274,12 @@ past: {
         }
       });
 
+      /* ─── Open map in new tab ─── */
+      if (mapBt) {
+        mapBt.addEventListener('click', () =>
+          window.open(`/maps/${encodeURIComponent(r.mapFile)}`, '_blank'));
+      }
+
       wrap.append(card);
     });
   }
@@ -286,59 +287,155 @@ past: {
 
 
   /* ---------- instructions ---------- */
-  instructions:{
-    async init(){
-      Common.ensureLogin(); Common.initNavbar();
-      const md=await fetch('/instructions.md').then(r=>r.text());
-      document.getElementById('mdContent').innerHTML = marked.parse(md);
+  instructions: {
+    async init () {
+      Common.ensureLogin();
+      Common.initNavbar();
+
+      /* fetch markdown */
+      const md = await fetch('/instructions.md').then(r => r.text());
+
+      /* convert → HTML with marked (GFM + line breaks) */
+      const html = marked.parse(md, { gfm: true, breaks: true });
+
+      /* inject + style */
+      const box = document.getElementById('mdContent');
+      box.className = 'markdown-body';   // class from github-markdown-css
+      box.innerHTML = html;
+
+      /* optional – syntax highlight for fenced code blocks */
+      import('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js')
+        .then(m => {
+          box.querySelectorAll('pre code').forEach(block => m.default.highlightElement(block));
+        });
     }
   }
 };
 
 /* ---------- admin ---------- */
 Pages.admin = {
+  users:    [],
+  datasets: [],        // [{id,label,description}]
+  current:  null,      // active pid
+
   async init () {
-    /* 1 . fetch data */
-    const [users, datasets] = await Promise.all([
-      fetch('/admin/users').then(r=>r.json()),
-      fetch('/admin/datasets').then(r=>r.json())
+    /* fetch initial data */
+    [this.users, this.datasets] = await Promise.all([
+      fetch('/admin/users').then(r => r.json()),
+      fetch('/admin/datasets').then(r => r.json())   // includes meta
     ]);
 
-    /* 2 . build empty table */
-    const tbl   = document.getElementById('matrix');
-    const head  = tbl.insertRow();
-    head.insertCell();                       // top-left empty
-    datasets.forEach(d => head.insertCell().textContent = d.label);
+    /* build filterable user selector */
+    this.sel   = document.getElementById('userSelect');
+    this.input = document.getElementById('userFilter');
+    this.buildOptions('');                          // initial full list
+    this.input.addEventListener('input', () =>
+      this.buildOptions(this.input.value.trim().toLowerCase()));
+    this.sel.addEventListener('change', () =>
+      this.loadForUser(this.sel.value));
 
-    /* 3 . rows = users */
-    for (const pid of users) {
-      const row  = tbl.insertRow();
-      row.insertCell().textContent = pid;
-
-      const current = new Set(
-        await fetch(`/admin/user_datasets/${pid}`).then(r=>r.json())
-      );
-
-      datasets.forEach(ds => {
-        const cell = row.insertCell();
-        const cb   = document.createElement('input');
-        cb.type = 'checkbox'; cb.checked = current.has(ds.id);
-        cb.addEventListener('change', () => this.toggle(pid, ds.id, cb.checked));
-        cell.append(cb);
-      });
+    /* auto-select first user */
+    if (this.users.length) {
+      this.sel.value = this.users[0];
+      this.loadForUser(this.users[0]);
+    } else {
+      document.getElementById('status').textContent = 'No users found.';
     }
-
-    document.getElementById('status').remove();
   },
 
-  async toggle (pid, dsID, allow) {
-    const r = await fetch('/admin/assign',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({prolificID:pid, datasetID:dsID, allow})
+  buildOptions (substr) {
+    this.sel.innerHTML = '';
+    this.users
+      .filter(pid => pid.toLowerCase().includes(substr))
+      .forEach(pid => {
+        const o = document.createElement('option');
+        o.value = o.textContent = pid;
+        this.sel.append(o);
+      });
+  },
+
+  async loadForUser (pid) {
+    this.current = pid;
+    document.getElementById('status').textContent =
+      `Loading datasets for ${pid}…`;
+
+    const assigned = new Set(
+      await fetch(`/admin/user_datasets/${pid}`).then(r => r.json())
+    );
+
+    const tbl = document.getElementById('dsTable');
+    tbl.innerHTML = '';
+    const head = tbl.insertRow();
+    head.innerHTML = '<th>Dataset</th><th>Description</th><th>Assigned?</th>';
+
+    this.datasets.forEach(ds => {
+      const row = tbl.insertRow();
+
+      /* label + edit button */
+      const labelTd = row.insertCell();
+      labelTd.innerHTML = `
+        <div style="display:flex;align-items:center;gap:.3rem">
+          <span class="dsLabel" data-id="${ds.id}">${ds.label}</span>
+          <button class="editMeta" data-id="${ds.id}">✎</button>
+        </div>`;
+      /* description cell */
+      const descTd = row.insertCell();
+      descTd.className = 'dsDesc';
+      descTd.dataset.id = ds.id;
+      descTd.textContent = ds.description || '';
+
+      /* assignment checkbox */
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = assigned.has(ds.id);
+      cb.addEventListener('change', () =>
+        this.toggleAssign(pid, ds.id, cb.checked));
+      row.insertCell().append(cb);
     });
-    if (!r.ok) alert('DB error – reverted');
+
+    /* attach meta-edit handlers */
+    tbl.querySelectorAll('.editMeta').forEach(btn =>
+      btn.addEventListener('click', () => this.editMeta(btn.dataset.id)));
+
+    document.getElementById('status').textContent =
+      `Editing assignments for ${pid}`;
+  },
+
+  async toggleAssign (pid, dsID, allow) {
+    const r = await fetch('/admin/assign', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prolificID:pid, datasetID:dsID, allow })
+    });
+    if (!r.ok) { alert('DB error — change reverted'); this.loadForUser(pid); }
+  },
+
+  /* inline metadata editor for label + description */
+  async editMeta (dsID) {
+    const labelSpan = document.querySelector(`.dsLabel[data-id="${dsID}"]`);
+    const descTd    = document.querySelector(`.dsDesc[data-id="${dsID}"]`);
+
+    const newLabel = prompt('Dataset label:', labelSpan.textContent.trim());
+    if (newLabel === null) return;
+    const newDesc  = prompt('Dataset description:', descTd.textContent.trim());
+    if (newDesc === null) return;
+
+    const r = await fetch(`/admin/dataset_meta/${dsID}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ label:newLabel, description:newDesc })
+    });
+    if (!r.ok) { alert('Save failed'); return; }
+
+    /* update UI */
+    labelSpan.textContent = newLabel;
+    descTd.textContent    = newDesc;
+
+    /* keep local cache in sync so a reload keeps edits */
+    const ds = this.datasets.find(d => d.id === dsID);
+    if (ds) { ds.label = newLabel; ds.description = newDesc; }
   }
 };
+
+
 
 
 /* ------------------------------------------------

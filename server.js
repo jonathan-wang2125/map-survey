@@ -142,6 +142,17 @@ app.get('/admin/datasets', async (_req, res) => {
   res.json(metaArr);
 });
 
+app.post('/admin/dataset_meta/:id', async (req, res) => {
+  const dsID = req.params.id;
+  const { label, description } = req.body || {};
+  if (!DATASET_IDS.includes(dsID))
+    return res.status(404).json({ error: 'unknown dataset' });
+
+  const meta = { label: label || dsID, description: description || '' };
+  await redis.set(`v1:datasets:${dsID}:meta`, JSON.stringify(meta));
+  res.json({ ok: true });
+});
+
 app.get('/admin/user_datasets/:pid', async (req,res) =>
   res.json(await redis.sMembers(v1Assign(req.params.pid))));
 
@@ -238,18 +249,25 @@ app.post('/submit_question', async (req, res) => {
 
 /* datasets visible to a single user */
 app.get('/user_datasets/:pid', async (req, res) => {
-  const pid   = req.params.pid;
-  const ids   = await redis.sMembers(`v1:assignments:${pid}`);   // v1 set
-  const list  = ids
-    .filter(id => DATASETS_MAP[id])                              // ignore unknown
-    .map(id => ({ id, label: DATASETS_MAP[id].label }));
+  const pid  = req.params.pid;
+
+  /* dataset IDs this user is assigned to */
+  const ids  = await redis.sMembers(v1Assign(pid));
+
+  /* build [{ id, label }] using meta stored in Redis */
+  const list = await Promise.all(
+    ids.map(async id => {
+      const { label } = await getDatasetMeta(id);   // helper defined earlier
+      return { id, label };
+    })
+  );
+
   res.json(list);
 });
 
 
-/* fetch past answers – no dummy rows remain, so just return all rows
-   that belong to this <pid> & <dataset> (list key guarantees that). */
-  app.get('/qresponses/:pid', async (req, res) => {
+/* fetch past answers (now includes Map file) */
+app.get('/qresponses/:pid', async (req, res) => {
   const { dataset } = req.query;
   const pid = req.params.pid;
   if (!dataset) return res.status(400).json({ error: 'dataset query param required' });
@@ -258,14 +276,28 @@ app.get('/user_datasets/:pid', async (req, res) => {
   const out = [];
 
   for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
-    const key = keyBuf.toString();          // ← convert Buffer → string
-    const str = await redis.get(key);
-    if (!str) continue;
+    const key   = keyBuf.toString();
+    const buf   = await redis.get(key);
+    if (!buf) continue;
 
-    let obj;
-    try { obj = JSON.parse(str); } catch { continue; }
+    let ans;
+    try { ans = JSON.parse(buf.toString()); } catch { continue; }
 
-    out.push(obj);
+    const uid = ans.responseID || ans.uid;
+    if (!uid) continue;
+
+    /* pull the question to get the Map filename */
+    const qRaw = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    let mapFile = '';
+    if (qRaw) {
+      try {
+        const qObj = JSON.parse(qRaw.toString());
+        mapFile = qObj.Map || qObj.map || '';
+      } catch {/* ignore bad json */}
+    }
+
+    ans.mapFile = mapFile;        // <- attach for front-end use
+    out.push(ans);
   }
 
   res.json({ responses: out });
