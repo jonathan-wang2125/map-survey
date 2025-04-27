@@ -68,7 +68,7 @@ const Pages = {
     async init () {
       Common.ensureLogin();
       Common.initNavbar();
-  
+
       const pid   = Common.pid();
       const wrap  = document.getElementById('datasetButtons');
       wrap.textContent = 'Loading…';
@@ -85,6 +85,10 @@ const Pages = {
   
       for (const ds of datasets) {
         const card = document.createElement('div');
+
+        const { submitted } = await fetch(
+          `/dataset_submission/${pid}/${ds.id}`
+        ).then(r => r.json());
   
         /* title */
         const h = document.createElement('h3');
@@ -98,6 +102,9 @@ const Pages = {
           localStorage.setItem('datasetID', ds.id);
           location.href = 'index.html';
         };
+        // if(submitted){
+        //   anno.disabled = true;
+        // }
         card.append(anno);
   
         /* Past answers */
@@ -109,6 +116,15 @@ const Pages = {
           location.href = 'past_answers.html';
         };
         card.append(past);
+
+        /* Status */
+        const badge = document.createElement('span');
+        badge.classList.add(
+          'status-badge',
+          submitted ? 'complete' : 'incomplete'
+        );
+        badge.textContent = submitted ? 'Submitted' : 'Pending';
+        card.append(badge);
   
         /* enable Past answers if any exist */
         (async () => {
@@ -188,7 +204,62 @@ const Pages = {
       txt.textContent = `${answered} / ${total}`;  
 
       if (data.error){ this.showMsg(data.error); return; }
-      if (data.done ){ this.showMsg('All done!'); return; }
+      if (data.done) {
+        this.showMsg("All done! Click 'Submit Dataset' to grade your responses.");
+      
+        // check whether they've already submitted
+        const pid = Common.pid();
+        const ds  = Common.ds();
+        const status = await fetch(`/dataset_submission/${pid}/${ds}`)
+                             .then(r => r.json());
+        
+        // build the button
+        const btn = document.createElement('button');
+
+        btn.textContent = status.submitted ? 'Submitted' : 'Submit Dataset';
+        btn.disabled   = status.submitted;
+
+        if (status.submitted){
+          this.showMsg("All done! Dataset has already been submitted.")
+        }
+      
+        btn.addEventListener('click', async () => {
+          if (!window.confirm(
+            'Are you sure you want to submit your dataset? You will not be able to modify your answers afterward.'
+          )) {
+            return;
+          }
+        
+          btn.disabled    = true;
+          btn.textContent = 'Running…';
+      
+          // 1) run your python script
+          const runResp = await fetch('/run-python', { method: 'POST' });
+          const runJson = await runResp.json();
+          if (!runResp.ok) {
+            alert('Error running script:\n' + runJson.error);
+            btn.disabled    = false;
+            btn.textContent = 'Submit Dataset';
+            return;
+          } 
+
+          alert('Response:\n' + runJson.output)
+
+          // 2) mark as submitted so it's disabled on reload
+          await fetch('/submit_dataset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prolificID: pid, dataset: ds })
+          });
+      
+          btn.textContent = 'Submitted';
+        });
+      
+        // insert it right under the status message
+        this.status.insertAdjacentElement('afterend', btn);
+        return;
+      }
+      
 
       this.current=data;
 
@@ -308,6 +379,13 @@ const Pages = {
       Common.initNavbar();
       if (!Common.ds()) location.href = '/select_dataset.html';
 
+      // 1) Figure out whether this dataset has been submitted already
+      const pid = Common.pid();
+      const ds  = Common.ds();
+      const { submitted } = await fetch(
+        `/dataset_submission/${pid}/${ds}`
+      ).then(r => r.json());
+
       const wrap = document.getElementById('answersList');
       wrap.textContent = 'Loading…';
 
@@ -378,32 +456,37 @@ const Pages = {
         /* read-only by default */
         [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = true));
 
-        /* show/hide textarea with checkbox */
-        badBox.addEventListener('change', () => {
-          reason.style.display = badBox.checked ? 'block' : 'none';
-        });
+        // Disable everything if the dataset has already been submitted
+        if (submitted) {
+          [ansIn, diffIn, badBox, reason, editBt].forEach(el => el.disabled = true);
+        } else {
+          /* show/hide textarea with checkbox */
+          badBox.addEventListener('change', () => {
+            reason.style.display = badBox.checked ? 'block' : 'none';
+          });
 
-        /* edit / save toggle */
-        editBt.addEventListener('click', async () => {
-          const editing = ansIn.disabled;
-          const setDis  = !editing;
-          [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = setDis));
-          editBt.textContent = editing ? 'Save' : 'Edit';
+          /* edit / save toggle */
+          editBt.addEventListener('click', async () => {
+            const editing = ansIn.disabled;
+            const setDis  = !editing;
+            [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = setDis));
+            editBt.textContent = editing ? 'Save' : 'Edit';
 
-          if (!editing) {                      // now saving
-            await fetch(`/edit_qresponse/${Common.pid()}`, {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({
-                dataset:     Common.ds(),
-                responseID:  r.responseID,
-                answer:      ansIn.value,
-                difficulty:  diffIn.value,
-                badQuestion: badBox.checked,
-                badReason:   reason.value
-              })
-            });
-          }
-        });
+            if (!editing) {                      // now saving
+              await fetch(`/edit_qresponse/${Common.pid()}`, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                  dataset:     Common.ds(),
+                  responseID:  r.responseID,
+                  answer:      ansIn.value,
+                  difficulty:  diffIn.value,
+                  badQuestion: badBox.checked,
+                  badReason:   reason.value
+                })
+              });
+            }
+          });
+        }
 
         /* open map */
         if (mapBt) {

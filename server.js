@@ -10,6 +10,8 @@ const path          = require('path');
 const bodyParser    = require('body-parser');
 const { createClient } = require('redis');
 const sharp         = require('sharp');
+const { execFile }  = require('child_process');
+const { pythonBin, testScript } = require('./public/config/paths');
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
@@ -276,6 +278,24 @@ app.post('/submit_question', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /submit_dataset — mark this user+dataset as submitted
+app.post('/submit_dataset', express.json(), async (req, res) => {
+  const { prolificID, dataset } = req.body;
+  if (!prolificID || !dataset) 
+    return res.status(400).json({ error: 'prolificID & dataset required' });
+  // key = v1:<user>:<dataset>:meta
+  await redis.set(`v1:${prolificID}:${dataset}:meta`, 'submitted');
+  res.json({ ok: true });
+});
+
+// GET /dataset_submission/:pid/:ds — has this dataset been submitted by this user?
+app.get('/dataset_submission/:pid/:ds', async (req, res) => {
+  const { pid, ds } = req.params;
+  const exists = await redis.exists(`v1:${pid}:${ds}:meta`);
+  res.json({ submitted: exists === 1 });
+});
+
+
 /* datasets visible to a single user */
 app.get('/user_datasets/:pid', async (req, res) => {
   const pid  = req.params.pid;
@@ -353,9 +373,26 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /run-python — runs the script in /storage/cmarnold/projects/maps
+app.post('/run-python', (req, res) => {
+  // adjust this path to the exact script you want to run:
+  const script = path.resolve(__dirname, '../maps/your_script.py');
+  console.log(pythonBin)
+  console.log(testScript)
+
+  execFile(pythonBin, [ testScript ], { cwd: path.dirname(testScript) }, (err, stdout, stderr) => {
+    if (err) {
+      console.error('Python error:', stderr);
+      return res.status(500).json({ error: stderr });
+    }
+    // send back whatever the script printed
+    res.json({ output: stdout });
+  });
+});
+
 /* ───────────────  6. BOOT  ───────────────────── */
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
-  app.listen(3000, () => console.log('▶  http://localhost:3000'));
+  app.listen(3000, () => console.log('Started server on http://localhost:3000'));
 })();

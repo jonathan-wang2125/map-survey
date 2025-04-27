@@ -188,3 +188,16 @@ nav.navbar .welcome .nav-user {
   color: inherit;            /* match the other nav‐links */
   text-decoration: none;     /* keep it consistent */
 }
+
+
+/* status badge */
+.status-badge {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  font-weight: 500;
+  color: white;
+}
+.status-badge.complete   { background: #2a9d8f; }   /* green */
+.status-badge.incomplete { background: #e76f51; }   /* red */
