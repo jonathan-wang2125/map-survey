@@ -9,7 +9,9 @@ nav.navbar{
   position:fixed;top:0;left:0;right:0;height:60px;
   background:#004466;color:#fff;display:flex;
   align-items:center;justify-content:space-between;padding:0 1rem;
-  z-index:1000
+  z-index:1000;
+  cursor: default;
+  user-select: none;
 }
 nav.navbar .nav-links{display:flex;gap:1rem}
 nav.navbar .nav-links a{padding:.5rem;border-radius:4px}
