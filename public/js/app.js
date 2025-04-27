@@ -95,6 +95,8 @@ const Pages = {
         h.textContent = ds.label;
         card.append(h);
   
+        card.classList.add('dataset-card')
+
         /* Annotate */
         const anno = document.createElement('button');
         anno.textContent = 'Annotate';
@@ -105,7 +107,6 @@ const Pages = {
         // if(submitted){
         //   anno.disabled = true;
         // }
-        card.append(anno);
   
         /* Past answers */
         const past = document.createElement('button');
@@ -115,7 +116,6 @@ const Pages = {
           localStorage.setItem('datasetID', ds.id);
           location.href = 'past_answers.html';
         };
-        card.append(past);
 
         /* Status */
         const badge = document.createElement('span');
@@ -124,7 +124,11 @@ const Pages = {
           submitted ? 'complete' : 'incomplete'
         );
         badge.textContent = submitted ? 'Submitted' : 'Pending';
-        card.append(badge);
+
+        const actions = document.createElement('div');
+        actions.classList.add('actions');
+        actions.append(anno, past, badge);
+        card.append(actions);
   
         /* enable Past answers if any exist */
         (async () => {

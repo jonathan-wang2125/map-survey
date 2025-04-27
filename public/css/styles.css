@@ -200,6 +200,27 @@ nav.navbar .welcome .nav-user {
   border-radius: 12px;
   font-weight: 500;
   color: white;
+  width: 80%;
+  align-self: center;
+  margin: 1em 0 0 0;
 }
 .status-badge.complete   { background: #2a9d8f; }   /* green */
 .status-badge.incomplete { background: #e76f51; }   /* red */
+
+/* make each dataset‐card lay out its contents top→bottom */
+.dataset-card {
+  display: flex;
+  flex-direction: column;
+  /* (you already had padding/border/etc on #datasetButtons > div) */
+}
+
+/* push the actions strip down to the bottom */
+.dataset-card .actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.dataset-card button {
+  width: 100%;              
+}
