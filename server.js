@@ -175,10 +175,23 @@ app.get('/dataset_count/:ds', async (req, res) => {
 
 /* login (ensure user exists) */
 app.post('/login', async (req, res) => {
-  const { prolificID } = req.body;
-  if (!prolificID) return res.status(400).json({ error: 'prolificID required' });
-  await ensureUser(prolificID);
-  res.json({ success: true });
+  const { prolificID, datasetID } = req.body;
+  if (!prolificID) 
+    return res.status(400).json({ error: 'prolificID required' });
+
+  // Attempt to add them to the set of users
+  // SADD returns 1 if new, 0 if already existed
+  const added = await redis.sAdd(v1Users, prolificID);
+
+  // If they came in with a valid dataset, auto-assign it
+  if (datasetID && DATASET_IDS.includes(datasetID)) {
+    await setAccess(prolificID, datasetID, true);
+  }
+
+  res.json({
+    success: true,
+    isNew:    added === 1   // <— tell the client
+  });
 });
 
 /* thumbnail helper */

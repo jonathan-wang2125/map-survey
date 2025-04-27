@@ -18,6 +18,13 @@ const Common = {
   ds () { return localStorage.getItem('datasetID'); }
 };
 
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
 /* ------------------------------------------------
  * Pages – each key matches <body data‑page="…">
  * ------------------------------------------------ */
@@ -27,16 +34,29 @@ const Pages = {
   login: {
     init() {
       document.getElementById('loginBtn').addEventListener('click', async () => {
-        const pid = document.getElementById('prolificIDInput').value.trim();
+        const pid    = document.getElementById('prolificIDInput').value.trim();
         if (!pid) { alert('Enter your Prolific ID'); return; }
-
-        const ok = await fetch('/login',{
-          method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({prolificID:pid})
-        }).then(r=>r.json());
-
-        if (ok.success) {
-          localStorage.setItem('prolificID', pid);
+    
+        const dsParam = new URLSearchParams(window.location.search).get('dataset');
+        const resp    = await fetch('/login', {
+          method: 'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ prolificID: pid, datasetID: dsParam })
+        });
+        const ok = await resp.json();
+    
+        if (!ok.success) {
+          return alert('Login failed');
+        }
+    
+        // store user (and dataset if present)
+        localStorage.setItem('prolificID', pid);
+        if (dsParam) localStorage.setItem('datasetID', dsParam);
+    
+        // redirect new users to instructions, others to select page
+        if (ok.isNew) {
+          location.href = 'instructions.html';
+        } else {
           location.href = 'select_dataset.html';
         }
       });
@@ -484,9 +504,12 @@ Pages.admin = {
       /* label + edit button */
       const labelTd = row.insertCell();
       labelTd.innerHTML = `
-        <div style="display:flex;align-items:center;gap:.3rem">
+        <div class="dataset-header">
           <span class="dsLabel" data-id="${ds.id}">${ds.label}</span>
-          <button class="editMeta" data-id="${ds.id}">✎</button>
+          <div class="dataset-actions">
+            <button class="editMeta" data-id="${ds.id}">✎ Edit</button>
+            <button class="inviteBtn" data-id="${ds.id}">➕ Invite</button>
+          </div>
         </div>`;
       /* description cell */
       const descTd = row.insertCell();
@@ -506,6 +529,29 @@ Pages.admin = {
     /* attach meta-edit handlers */
     tbl.querySelectorAll('.editMeta').forEach(btn =>
       btn.addEventListener('click', () => this.editMeta(btn.dataset.id)));
+
+    tbl.querySelectorAll('.inviteBtn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const dsID = btn.dataset.id;
+        const link = `${window.location.origin}/login.html?dataset=${encodeURIComponent(dsID)}`;
+    
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        ta.style.position = 'fixed';
+        ta.style.opacity  = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        let ok = false;
+        try {
+          ok = document.execCommand('copy');
+        } catch (e) {
+          console.error('Fallback copy failed:', e);
+        }
+        document.body.removeChild(ta);
+        showToast(ok ? 'Invite link copied!' : 'Copy failed');
+      });
+    });
 
     document.getElementById('status').textContent =
       `Editing assignments for ${pid}`;

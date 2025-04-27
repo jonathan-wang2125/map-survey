@@ -115,6 +115,40 @@ a.dlBtn:hover{background:#005599}
 /* optional: remove excess spacing around the checkbox */
 .bad-label input{ margin:0; }
 
+/* make the entire row a flex container, pushing label to left and actions to right */
+.dataset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* keep the two buttons side by side with a small gap */
+.dataset-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ── simple toast/snackbar ───────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease-in-out;
+  z-index: 1001;
+}
+.toast.show {
+  opacity: 1;
+}
+
 /* --- markdown fine-tuning -------------------------------------------- */
 .markdown-body {                     /* keep overall padding */
   padding-left: 0;                   /* ← remove extra left indent */
@@ -139,16 +173,18 @@ a.dlBtn:hover{background:#005599}
 #matrix th { padding: .4rem .5rem; }
 .dsDesc    { margin-top: .15rem; }
 
+/* make the middle “welcome” slot expand and center its contents */
+nav.navbar .welcome {
+  flex: 1;                   /* take up all the space between brand and links */
+  display: flex;             /* allow centering inside it */
+  justify-content: center;   /* centre the navUser horizontally */
+  align-items: center;       /* vertically align with the bar */
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
+/* style the username just like a nav‐link */
+nav.navbar .welcome .nav-user {
+  padding: 0 .5rem;          /* same side padding as your <a>’s */
+  font-weight: 500;          /* or whatever weight you prefer */
+  color: inherit;            /* match the other nav‐links */
+  text-decoration: none;     /* keep it consistent */
+}

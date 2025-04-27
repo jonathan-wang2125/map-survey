@@ -11,20 +11,12 @@
     if(!localStorage.getItem('prolificID')) location.href='login.html';
   </script>
 
-  <nav class="navbar">
-    <div class="brand"><a href="select_dataset.html">Map‑Survey</a></div>
-    <div class="nav-links">
-      <a href="select_dataset.html">Home</a>
-      <a href="instructions.html">Instructions</a>
-      <a id="logoutBtn" href="#">Log out</a>
-    </div>
-  </nav>
-
   <div class="container">
     <h1>Choose a dataset</h1>
     <div id="datasetButtons"></div>
   </div>
 
+  <script src="/js/loadNavbar.js" defer></script>
   <script src="/js/app.js" defer></script>
 </body>
 </html>
