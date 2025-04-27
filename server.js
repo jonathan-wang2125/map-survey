@@ -299,7 +299,7 @@ app.get('/qresponses/:pid', async (req, res) => {
     let ans;
     try { ans = JSON.parse(buf.toString()); } catch { continue; }
 
-    const uid = ans.responseID || ans.uid;
+    const uid = ans.uid || ans.QID;
     if (!uid) continue;
 
     /* pull the question to get the Map filename */

@@ -143,6 +143,7 @@ const Pages = {
       this.form.addEventListener('submit',e=>this.submit(e));
 
       await this.load();
+
     },
 
     async load(){
@@ -170,6 +171,14 @@ const Pages = {
       if (data.done ){ this.showMsg('All done!'); return; }
 
       this.current=data;
+
+      /* --- reset the bad-question widgets --- */
+      this.badBox.checked      = false;   // ensure unchecked
+      this.badText.value       = '';      // clear any previous reason
+      this.badText.style.display = 'none';
+      this.badLabel.style.display = 'none';
+      this.badText.required    = false;
+
       this.render();
 
       this.status.textContent = '';
@@ -209,6 +218,19 @@ const Pages = {
       // }else{
       //   this.mapDiv.textContent='No locations.';
       // }
+    },
+
+    scrollAfterImage () {
+      const img = document.querySelector('#questionMapContainer img');
+    
+      const doScroll = () =>
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' });
+    
+      if (img && !img.complete) {         // wait if still loading
+        img.addEventListener('load', doScroll, { once: true });
+      } else {
+        doScroll();                       // image was cached / instant
+      }
     },
 
     async submit (e) {
@@ -253,7 +275,9 @@ const Pages = {
     
       /* clear form & load next question (no alert) */
       this.form.reset();
-      this.load();
+      await this.load();
+
+      this.scrollAfterImage();
     }
   },
 
