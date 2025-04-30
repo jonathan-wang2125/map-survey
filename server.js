@@ -11,14 +11,40 @@ const bodyParser    = require('body-parser');
 const { createClient } = require('redis');
 const sharp         = require('sharp');
 const { execFile }  = require('child_process');
-const { pythonBin, testScript } = require('./public/config/paths');
+const { pythonBin, pythonRoot, gradeDataset, createDataset} = require('./public/config/paths');
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
 let DATASET_IDS   = [];           // [id, id, …]
-let DATASETS_MAP  = {};           // id → {id,label}
+// let DATASETS_MAP  = {};           // id → {id,label}
 
 const MAX_RESPONSES = 10;
+
+/**
+ * Redis Schema
+ * ===================================================================================
+ *  - v1:usernames                        -> SET of usernames
+ *  - v1:datasets                         -> SET of datasets
+ *  - v1:assignments:usernames            -> SET of datasets assigned to username
+ *  - v1:assignments:dataset              -> SET of usernames assigned to dataset
+ * 
+ *  - v1:datasets:<dataset_name>          -> SET of questions uids
+ *  - v1:datasets:<dataset_name>:meta     -> JSON_VALUE of dataset metadata
+ *                                            { label, description, topic }
+ *  - v1:datasets:<dataset_name>:<uid>    -> JSON_VALUE of question metadata
+ *                                            { uid, Question, Map, Expression Complexity }
+ * 
+ *  - v1:campaigns:<topic>                 -> SET of datasets
+ *  - v1:campaigns:<topic>:meta            -> JSON_VALUE of campaign metadata
+ *                                            { curIndex, numImages }
+ * 
+ *  - v1:<user_name>:<dataset_name>:meta  -> STR_VALUE indicating dataset submission
+ *  - v1:<user_name>:<dataset_name>:<uid> -> JSON_VALUE of user response
+ *                                            { uid, prolificID, dataset, question, answer, 
+ *                                              difficulty, badQuestion, badReason, 
+ *                                              origTimestamp, editTimestamp }
+ * 
+ */
 
 /**
  * Populate DATASETS / DATASET_IDS / DATASETS_MAP from Redis.
@@ -31,18 +57,17 @@ async function loadDatasetsFromRedis() {
 
   DATASETS = ids.map(id => ({ id, label: id }));
   DATASET_IDS  = ids;
-  DATASETS_MAP = DATASETS.reduce((m, d) => (m[d.id] = d, m), {});
+  // DATASETS_MAP = DATASETS.reduce((m, d) => (m[d.id] = d, m), {});
 
   console.log(`Datasets loaded from Redis: ${ids.join(', ')}`);
 }
 
 async function getDatasetMeta(dsID) {
   const raw = await redis.get(`v1:datasets:${dsID}:meta`);
-  if (!raw) return { label: dsID, description: '' };   // sensible defaults
+  if (!raw) return { label: dsID, description: '', topic: ''};   // sensible defaults
   try   { return JSON.parse(raw); }
-  catch  { return { label: dsID, description: '' }; }
+  catch  { return { label: dsID, description: '', topic: ''}; }
 }
-
 
 /* ───────────────  2. APP & REDIS  ───────────── */
 const app = express();
@@ -53,10 +78,11 @@ app.use('/maps', express.static(path.join(__dirname, 'maps')));
 const redis = createClient({ url: 'redis://localhost:6379' });
 
 /* prefix helpers --------------------------------------------------------- */
-const v1          = key => `v1:${key}`;
-const v1Users     = v1('usernames');                // set of pids
-const v1Assign    = pid => v1(`assignments:${pid}`);// set of datasets for a pid
-const v1AnswerKey = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
+const v1            = key => `v1:${key}`;
+const v1Users       = v1('usernames');                // set of pids
+const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
+const v1AssignDb    = ds => v1(`assignments:${ds}`);
+const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
 
 /* ---------- Question normaliser ---------- */
 function normalise(q) {
@@ -123,9 +149,124 @@ async function userFinished(pid, dsID) {
 
 async function setAccess (pid, datasetID, allow) {
   if (allow)
-    await redis.sAdd(v1Assign(pid), datasetID);
+    await Promise.all([
+      redis.sAdd(v1AssignUser(pid), datasetID),
+      redis.sAdd(v1AssignDb(datasetID), pid)
+    ]);
   else
-    await redis.sRem(v1Assign(pid), datasetID);
+    await Promise.all([
+      redis.sRem(v1AssignUser(pid), datasetID),
+      redis.sRem(v1AssignDb(datasetID), pid)
+    ]);
+}
+
+function addDatasetToGlobals(id, label = id) {
+  if (!DATASET_IDS.includes(id)) {
+    DATASET_IDS.push(id);
+    DATASETS.push({ id, label });
+    // DATASETS_MAP[id] = { id, label };
+  }
+}
+
+function removeDatasetFromGlobals(id) {
+  DATASET_IDS = DATASET_IDS.filter(d => d !== id);
+  DATASETS    = DATASETS.filter(d => d.id !== id);
+  // delete DATASETS_MAP[id];
+}
+
+/* ─── helper: reuse or create a next dataset ───────────────────────── */
+async function getNextDataset (pid, currentDs) {
+  /* 1. discover the topic of the current dataset */
+  const { topic } = await getDatasetMeta(currentDs);
+  if (!topic) return null;                      // no topic → nothing to do
+
+  const campSetKey = `v1:campaigns:${topic}`;
+  const existing   = await redis.sMembers(campSetKey);
+  let nextDs = null;
+
+  /* 2. pick an existing dataset with < 2 assignees */
+  for (const cand of existing) {
+    const numAssigned = await redis.sCard(`v1:assignments:${cand}`);
+    if (numAssigned >= 2) continue;                      // already full
+  
+    const already = await redis.sIsMember(`v1:assignments:${cand}`, pid);
+    if (!already) {                                     // slot free + user not on it
+      nextDs = cand;
+      break;
+    }
+  }
+
+  /* 3. otherwise create one */
+  if (!nextDs) {
+    /* read / validate campaign meta */
+    const metaRaw = await redis.get(`${campSetKey}:meta`);
+    if (!metaRaw) throw new Error('campaign metadata missing');
+
+    let meta;
+    try { meta = JSON.parse(metaRaw); }          // strict parse
+    catch { throw new Error('campaign metadata invalid'); }
+
+    /* ── capacity check ──────────────────────────────────── */
+    const limit = meta.numImages ?? meta.NumImages;          // accept either key
+    if (limit == null) throw new Error('numImages not set in campaign metadata');
+
+    if (meta.curIndex >= limit) {
+      return null;
+    }
+
+    const index = meta.curIndex++;
+    nextDs      = `${topic}_${index}`;
+
+    /* generate dataset via Python */
+    const out = await new Promise((resolve, reject) => {
+      execFile(
+        pythonBin,
+        [createDataset, topic, index],
+        { cwd: pythonRoot },           // ← use the root, not path.dirname(createDataset)
+        (err, stdout) => err ? reject(err) : resolve(stdout)
+      );
+    });
+
+    let payload;
+    try {
+      payload = JSON.parse(out);
+    } catch {
+      throw new Error('dataset generator returned bad JSON');
+    }
+
+    /* ---- extract and sanity-check ----------------------------------- */
+    const metaFromPy = payload.dataset_meta;
+    console.log(payload)
+    if (!metaFromPy || !metaFromPy.topic || !Array.isArray(payload.dataset_entries))
+      throw new Error('generator payload missing required fields');
+
+    const questions = payload.dataset_entries; // array of { uid, Question, Map, … }
+
+    /* bulk-insert question objects ------------------------------------ */
+    const dsSetKey = `v1:datasets:${nextDs}`;
+    const pipe     = redis.multi();
+    questions.forEach(q => {
+      if (!q.uid) return;                      // guard malformed rows
+      pipe.sAdd(dsSetKey, q.uid);
+      pipe.set(`${dsSetKey}:${q.uid}`, JSON.stringify(q));
+    });
+    await pipe.exec();
+
+    /* register new dataset  & campaign links -------------------------- */
+    await Promise.all([
+      redis.sAdd('v1:datasets', nextDs),
+      redis.sAdd(campSetKey,    nextDs),
+      redis.set(`v1:datasets:${nextDs}:meta`, JSON.stringify(metaFromPy)),
+      redis.set(`${campSetKey}:meta`,         JSON.stringify(meta))
+    ]);
+
+    DATASET_IDS.push(nextDs);
+    DATASETS.push({ id: nextDs, label: metaFromPy.label || nextDs });
+  }
+
+  /* 4. assign the user if not already */
+  await setAccess(pid, nextDs, true);
+  return nextDs;
 }
 
 /* ───────────────  5. ROUTES  ─────────────────── */
@@ -144,24 +285,141 @@ app.get('/admin/datasets', async (_req, res) => {
   res.json(metaArr);
 });
 
+/* POST /admin/dataset  – create a dataset record + meta
+Body: { id, label, description, topic }                  */
+app.post('/admin/dataset', async (req, res) => {
+  const { id, label = id } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'id required' });
+  if (DATASET_IDS.includes(id))
+    return res.status(409).json({ error: 'dataset exists' });
+
+  /* add to in-memory globals */
+  addDatasetToGlobals(id, label);
+
+  res.json({ ok: true });
+});
+
+/* DELETE /admin/dataset/:id  – remove dataset + questions + meta */
+app.delete('/admin/dataset/:id', async (req, res) => {
+  const id = req.params.id;
+  if (!DATASET_IDS.includes(id))
+    return res.status(404).json({ error: 'unknown dataset' });
+
+  /* update globals */
+  removeDatasetFromGlobals(id);
+
+  res.json({ ok: true });
+});
+
 app.post('/admin/dataset_meta/:id', async (req, res) => {
   const dsID = req.params.id;
-  const { label, description } = req.body || {};
+  const { label, description, topic } = req.body || {};
   if (!DATASET_IDS.includes(dsID))
     return res.status(404).json({ error: 'unknown dataset' });
 
-  const meta = { label: label || dsID, description: description || '' };
+  const prevMeta = await getDatasetMeta(dsID);
+
+  const meta = { label: label || dsID, description: description || '', topic: topic || '' };
   await redis.set(`v1:datasets:${dsID}:meta`, JSON.stringify(meta));
+
+  const oldTopic = (prevMeta.topic || '').trim();
+  const newTopic = (meta.topic   || '').trim();
+
+  if (oldTopic !== newTopic) {
+    if (oldTopic) {
+      await redis.sRem(`v1:campaigns:${oldTopic}`, dsID);
+      /* optional: clean up empty sets or meta keys here */
+    }
+    if (newTopic) {
+      /* add dataset to the new campaign set */
+      await redis.sAdd(`v1:campaigns:${newTopic}`, dsID);
+
+      /* ensure campaign meta exists once */
+      const campMetaKey = `v1:campaigns:${newTopic}:meta`;
+      if (!(await redis.exists(campMetaKey))) {
+        await redis.set(campMetaKey, JSON.stringify({ curIndex: 0, numImages: 0 }));
+      }
+    }
+  }
+
   res.json({ ok: true });
 });
 
 app.get('/admin/user_datasets/:pid', async (req,res) =>
-  res.json(await redis.sMembers(v1Assign(req.params.pid))));
+  res.json(await redis.sMembers(v1AssignUser(req.params.pid))));
 
 app.post('/admin/assign', express.json(), async (req,res) => {
   const { prolificID, datasetID, allow } = req.body;
   try { await setAccess(prolificID, datasetID, allow); res.json({ok:true}); }
   catch (e) { console.error(e); res.status(500).json({error:'db'}); }
+});
+
+/* GET /admin/campaign_status/:topic */
+app.get('/admin/campaign_status/:topic', async (req, res) => {
+  const topic = req.params.topic.trim();
+  const dsIDs  = await redis.sMembers(`v1:campaigns:${topic}`);   // SET of datasets
+  if (!dsIDs.length) return res.status(404).json({ error: 'unknown topic' });
+
+  /* --- all users assigned to *any* dataset in this campaign --- */
+  const userSet = new Set();
+  for (const ds of dsIDs) {
+    const members = await redis.sMembers(`v1:assignments:${ds}`);
+    members.forEach(u => userSet.add(u));
+  }
+  const users = Array.from(userSet);
+
+  /* --- accuracy per user on the <campaign>Accuracy dataset --- */
+  const accDS = `${topic}Accuracy`;
+  const accPromises = users.map(async pid => {
+    const key = `v1:${pid}:${accDS}:meta`;
+    const val = await redis.get(key);
+    return { pid, accuracy: val ? Number(val) || null : null };
+  });
+  const accuracyArr = await Promise.all(accPromises);
+
+  /* --- per-user, per-dataset progress ----------------------- */
+  const progArr = [];
+  for (const pid of users) {
+    for (const ds of dsIDs) {
+      const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
+      if (!assigned) continue;
+
+      const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
+
+      /* answered count */
+      const pattern = `v1:${pid}:${ds}:*`;
+      let answered = 0, lastTS = null;
+      for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
+        const key = keyBuf.toString();
+        if (key.endsWith(':meta')) continue;
+        answered++;
+
+        const raw = await redis.get(key);
+        try {
+          const obj = JSON.parse(raw);
+          const ts  = obj.editTimestamp || obj.origTimestamp;
+          if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
+        } catch {}
+      }
+
+      const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
+      progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
+    }
+  }
+
+  /* ➊ read campaign meta (curIndex, numImages, etc.) */
+  const metaRaw = await redis.get(`v1:campaigns:${topic}:meta`);
+  let meta = { curIndex: 0, numImages: 0 };
+  if (metaRaw) {
+    try { meta = JSON.parse(metaRaw); } catch {}
+  }
+
+  res.json({
+    users: accuracyArr,
+    datasets: dsIDs,
+    progress: progArr,
+    meta
+  });
 });
 
 /* datasets list */
@@ -241,8 +499,7 @@ app.get('/get_questions', async (req, res) => {
 
 /* submit an answer */
 app.post('/submit_question', async (req, res) => {
-  const { dataset, prolificID, questionIndex,
-          question, QID, answer, difficulty } = req.body;
+  const { dataset, prolificID } = req.body
   if (!prolificID || !dataset)       return res.status(400).json({ error: 'params' });
   if (!DATASET_IDS.includes(dataset)) return res.status(400).json({ error: 'invalid ds' });
 
@@ -250,7 +507,7 @@ app.post('/submit_question', async (req, res) => {
 
   /* capacity check */
   const qArr = await getDatasetQuestions(dataset);
-  const uid  = QID || (qArr[questionIndex]?.uid);
+  const uid  = req.body.uid || (qArr[questionIndex]?.uid);
   let count  = 0;
   for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
     count++;
@@ -262,17 +519,16 @@ app.post('/submit_question', async (req, res) => {
   await redis.set(
     v1AnswerKey(prolificID, dataset, uid),
     JSON.stringify({
-      responseID: uid,
-      dataset, 
-      QID: uid,
-      question,
-      answer,
+      uid: uid,
       prolificID,
-      questionIndex,
-      difficulty,
+      dataset, 
+      questionIndex: req.body.questionIndex,
+      question: req.body.question,
+      answer: req.body.answer,
+      difficulty: req.body.difficulty,
       badQuestion: req.body.badQuestion ?? false,
       badReason: req.body.badReason ?? '',
-      timestamp: Date.now()
+      origTimestamp: Date.now()
     })
   );
   res.json({ success: true });
@@ -280,11 +536,11 @@ app.post('/submit_question', async (req, res) => {
 
 // POST /submit_dataset — mark this user+dataset as submitted
 app.post('/submit_dataset', express.json(), async (req, res) => {
-  const { prolificID, dataset } = req.body;
+  const { prolificID, dataset, value } = req.body;
   if (!prolificID || !dataset) 
     return res.status(400).json({ error: 'prolificID & dataset required' });
   // key = v1:<user>:<dataset>:meta
-  await redis.set(`v1:${prolificID}:${dataset}:meta`, 'submitted');
+  await redis.set(`v1:${prolificID}:${dataset}:meta`, value);
   res.json({ ok: true });
 });
 
@@ -301,13 +557,13 @@ app.get('/user_datasets/:pid', async (req, res) => {
   const pid  = req.params.pid;
 
   /* dataset IDs this user is assigned to */
-  const ids  = await redis.sMembers(v1Assign(pid));
+  const ids  = await redis.sMembers(v1AssignUser(pid));
 
   /* build [{ id, label }] using meta stored in Redis */
   const list = await Promise.all(
     ids.map(async id => {
-      const { label } = await getDatasetMeta(id);   // helper defined earlier
-      return { id, label };
+      const { label, topic } = await getDatasetMeta(id);
+      return { id, label, topic };
     })
   );
 
@@ -355,8 +611,8 @@ app.get('/qresponses/:pid', async (req, res) => {
 /* edit an existing answer */
 app.post('/edit_qresponse/:pid', async (req, res) => {
   const { pid } = req.params;
-  const { dataset, responseID, answer, difficulty, badQuestion, badReason } = req.body;
-  const key = v1AnswerKey(pid, dataset, responseID);
+  const { dataset, uid, answer, difficulty, badQuestion, badReason } = req.body;
+  const key = v1AnswerKey(pid, dataset, uid);
   const str = await redis.get(key);
   if (!str) return res.status(404).json({ error: 'not found' });
 
@@ -368,26 +624,127 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
   obj.difficulty = difficulty;
   obj.badQuestion = !!badQuestion;
   obj.badReason = badQuestion ? (badReason || '') : '';
-  obj.timestamp  = Date.now();
+  obj.editTimestamp = Date.now();
   await redis.set(key, JSON.stringify(obj));
   res.json({ success: true });
 });
 
-// POST /run-python — runs the script in /storage/cmarnold/projects/maps
-app.post('/run-python', (req, res) => {
-  // adjust this path to the exact script you want to run:
-  const script = path.resolve(__dirname, '../maps/your_script.py');
-  console.log(pythonBin)
-  console.log(testScript)
+// POST /run-python – grade a dataset exactly once
+app.post('/run-python', async (req, res) => {
+  const { prolificID, dataset } = req.body || {};
 
-  execFile(pythonBin, [ testScript ], { cwd: path.dirname(testScript) }, (err, stdout, stderr) => {
-    if (err) {
-      console.error('Python error:', stderr);
-      return res.status(500).json({ error: stderr });
+  if (!prolificID || !dataset)
+    return res.status(400).json({ error: 'prolificID & dataset required' });
+
+  if (!DATASET_IDS.includes(dataset))
+    return res.status(400).json({ error: 'unknown dataset' });
+
+  const metaKey = `v1:${prolificID}:${dataset}:meta`;
+  if (await redis.exists(metaKey))
+    return res.status(403).json({ error: 'dataset already submitted' });
+  
+  let output;
+  let nextDs;
+  let accuracy = 'submitted';
+  if (dataset.endsWith('Accuracy')) {
+    execFile(
+      pythonBin,
+      [gradeDataset, prolificID, dataset],    // pass PID and dataset to the script
+      { cwd: pythonRoot },
+      async (err, stdout, stderr) => {
+        if (err) {
+          console.error('Python error:', stderr);
+          return res.status(500).json({ error: 'grading failed' });
+        }
+
+        /* stdout should be a single JSON line:  {"accuracy": 0.83} */
+        try {
+          // keep only the last non-empty line (in case Python prints warnings)
+          const lastLine = stdout.split('\n').filter(Boolean).pop() || '{}';
+          accuracy = JSON.parse(lastLine).accuracy;
+          if (typeof accuracy !== 'number' && accuracy !== 'string')
+            throw new Error('missing accuracy field');
+        } catch (e) {
+          console.error('Bad grader output:', stdout);
+          return res.status(500).json({ error: 'invalid grader output' });
+        }
+
+        if (typeof accuracy === 'string') {
+          output = 'Thank you for your submission.'
+        } else  if (accuracy >= 0.85) {             // only then branch to new work
+          try { nextDs = await getNextDataset(prolificID, dataset); }
+          catch (e) { return res.status(500).json({ error: e.message }); }
+          output = `Congratulations! You have passed the test with ${(accuracy*100).toFixed(1)}% accuracy. Please proceed to the next available dataset on the "Home" page.`
+        }
+        else {
+          output = 'We are sorry, you do not meet the requirements to continue this study. Thank you for your participation.'
+        }
+
+        await redis.set(metaKey, accuracy);
+        return res.json({ ok:true, output });
+      }
+    );
+
+    return;
+  }
+
+  try { nextDs = await getNextDataset(prolificID, dataset); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
+
+  if (nextDs) {
+    output = 'Thank you for your submission. Please proceed to the next available dataset on the home page.';
+  } else {
+    output = 'This campaign has reached its limit. ' +
+             'Thank you for your participation. ' +
+             'Please check back at Prolific for future campaigns.';
+  }
+
+  await redis.set(metaKey, accuracy);
+  res.json({ ok:true, output });
+});
+
+
+/* export dataset */
+app.get('/export_responses/:pid/:ds', async (req, res) => {
+  const { pid, ds } = req.params;
+
+  // sanity-check inputs
+  if (!DATASET_IDS.includes(ds))
+    return res.status(404).json({ error: 'unknown dataset' });
+
+  // Only keys that match this user & dataset
+  //  v1:<pid>:<ds>:<uid>
+  const pattern = `v1:${pid}:${ds}:*`;
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+
+  try {
+    for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
+      const key = keyBuf.toString();
+
+      // ignore status marker v1:<pid>:<ds>:meta
+      if (key.endsWith(':meta')) continue;
+
+      const raw = await redis.get(key);
+      if (!raw) continue;
+
+      let obj;
+      try { obj = JSON.parse(raw.toString()); }
+      catch { continue; }
+
+      // ensure the three core fields are present
+      const uid = key.split(':').at(-1);  // last token
+      obj.prolificID = pid;
+      obj.dataset    = ds;
+      obj.uid        = uid;
+
+      res.write(JSON.stringify(obj) + '\n');
     }
-    // send back whatever the script printed
-    res.json({ output: stdout });
-  });
+    res.end();
+  } catch (err) {
+    console.error('export_responses error:', err);
+    res.status(500).json({ error: 'internal' });
+  }
 });
 
 /* ───────────────  6. BOOT  ───────────────────── */

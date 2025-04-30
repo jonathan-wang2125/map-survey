@@ -64,84 +64,188 @@ const Pages = {
   },
 
   /* ---------- dataset select ---------- */
+  // select: {
+  //   async init () {
+  //     Common.ensureLogin();
+  //     Common.initNavbar();
+
+  //     const pid   = Common.pid();
+  //     const wrap  = document.getElementById('datasetButtons');
+  //     wrap.textContent = 'Loading…';
+  
+  //     /* datasets this user may access */
+  //     const datasets = await fetch(`/user_datasets/${pid}`).then(r => r.json());
+  
+  //     if (!datasets.length) {
+  //       wrap.textContent = 'No datasets have been assigned to your account.';
+  //       return;
+  //     }
+  
+  //     wrap.innerHTML = '';  // clear loading text
+  
+  //     for (const ds of datasets) {
+  //       const card = document.createElement('div');
+
+  //       const { submitted } = await fetch(
+  //         `/dataset_submission/${pid}/${ds.id}`
+  //       ).then(r => r.json());
+  
+  //       /* title */
+  //       const h = document.createElement('h3');
+  //       h.textContent = ds.label;
+  //       card.append(h);
+  
+  //       card.classList.add('dataset-card')
+
+  //       /* Annotate */
+  //       const anno = document.createElement('button');
+  //       anno.textContent = 'Annotate';
+  //       anno.onclick = () => {
+  //         localStorage.setItem('datasetID', ds.id);
+  //         location.href = 'index.html';
+  //       };
+  //       // if(submitted){
+  //       //   anno.disabled = true;
+  //       // }
+  
+  //       /* Past answers */
+  //       const past = document.createElement('button');
+  //       past.textContent = 'Past answers';
+  //       past.disabled = true;
+  //       past.onclick = () => {
+  //         localStorage.setItem('datasetID', ds.id);
+  //         location.href = 'past_answers.html';
+  //       };
+
+  //       /* Status */
+  //       const badge = document.createElement('span');
+  //       badge.classList.add(
+  //         'status-badge',
+  //         submitted ? 'complete' : 'incomplete'
+  //       );
+  //       badge.textContent = submitted ? 'Submitted' : 'Pending';
+
+  //       const actions = document.createElement('div');
+  //       actions.classList.add('actions');
+  //       actions.append(anno, past, badge);
+  //       card.append(actions);
+  
+  //       /* enable Past answers if any exist */
+  //       (async () => {
+  //         const j = await fetch(
+  //           `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
+  //         ).then(r => r.json());
+  //         if (j.responses.length) past.disabled = false;
+  //       })();
+  
+  //       wrap.append(card);
+  //     }
+  //   }
+  // },
+
   select: {
-    async init () {
+    async init() {
       Common.ensureLogin();
       Common.initNavbar();
-
-      const pid   = Common.pid();
-      const wrap  = document.getElementById('datasetButtons');
-      wrap.textContent = 'Loading…';
   
-      /* datasets this user may access */
+      const pid = Common.pid();
+  
+      // 1) load all datasets for this user
       const datasets = await fetch(`/user_datasets/${pid}`).then(r => r.json());
-  
       if (!datasets.length) {
-        wrap.textContent = 'No datasets have been assigned to your account.';
+        const msg = document.createElement('p');
+        msg.textContent = 'No datasets have been assigned to your account.';
+        document.body.append(msg);
         return;
       }
   
-      wrap.innerHTML = '';  // clear loading text
-  
+      // 2) group by topic
+      const byTopic = {};
       for (const ds of datasets) {
-        const card = document.createElement('div');
-
-        const { submitted } = await fetch(
-          `/dataset_submission/${pid}/${ds.id}`
-        ).then(r => r.json());
+        const topic = ds.topic || 'Uncategorized';
+        (byTopic[topic] ||= []).push(ds);
+      }
   
-        /* title */
-        const h = document.createElement('h3');
-        h.textContent = ds.label;
-        card.append(h);
+      // 3) for each topic, create a standalone container
+      for (const [topic, list] of Object.entries(byTopic)) {
+        // a) container div under <body>
+        const container = document.createElement('div');
+        container.classList.add('container');
   
-        card.classList.add('dataset-card')
-
-        /* Annotate */
-        const anno = document.createElement('button');
-        anno.textContent = 'Annotate';
-        anno.onclick = () => {
-          localStorage.setItem('datasetID', ds.id);
-          location.href = 'index.html';
-        };
-        // if(submitted){
-        //   anno.disabled = true;
-        // }
+        // b) topic title
+        const h2 = document.createElement('h2');
+        h2.textContent = topic;
+        container.append(h2);
   
-        /* Past answers */
-        const past = document.createElement('button');
-        past.textContent = 'Past answers';
-        past.disabled = true;
-        past.onclick = () => {
-          localStorage.setItem('datasetID', ds.id);
-          location.href = 'past_answers.html';
-        };
-
-        /* Status */
-        const badge = document.createElement('span');
-        badge.classList.add(
-          'status-badge',
-          submitted ? 'complete' : 'incomplete'
-        );
-        badge.textContent = submitted ? 'Submitted' : 'Pending';
-
-        const actions = document.createElement('div');
-        actions.classList.add('actions');
-        actions.append(anno, past, badge);
-        card.append(actions);
+        // c) inner buttons wrapper with id="datasetButtons"
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.id = 'datasetButtons';
+        container.append(buttonsDiv);
   
-        /* enable Past answers if any exist */
-        (async () => {
-          const j = await fetch(
-            `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
+        // d) for each dataset in this topic, build a .dataset-card
+        for (const ds of list) {
+          // fetch whether it’s been submitted
+          const { submitted } = await fetch(
+            `/dataset_submission/${pid}/${ds.id}`
           ).then(r => r.json());
-          if (j.responses.length) past.disabled = false;
-        })();
   
-        wrap.append(card);
+          // card element
+          const card = document.createElement('div');
+          card.classList.add('dataset-card');
+  
+          // title
+          const h3 = document.createElement('h3');
+          h3.textContent = ds.label;
+          card.append(h3);
+  
+          // annotate button
+          const anno = document.createElement('button');
+          anno.textContent = 'Annotate';
+          anno.onclick = () => {
+            localStorage.setItem('datasetID', ds.id);
+            location.href = 'index.html';
+          };
+  
+          // past answers button
+          const past = document.createElement('button');
+          past.textContent = 'Past answers';
+          past.disabled = true;
+          past.onclick = () => {
+            localStorage.setItem('datasetID', ds.id);
+            location.href = 'past_answers.html';
+          };
+  
+          // status badge
+          const badge = document.createElement('span');
+          badge.classList.add(
+            'status-badge',
+            submitted ? 'complete' : 'incomplete'
+          );
+          badge.textContent = submitted ? 'Submitted' : 'Pending';
+  
+          // actions wrapper
+          const actions = document.createElement('div');
+          actions.classList.add('actions');
+          actions.append(anno, past, badge);
+          card.append(actions);
+  
+          // enable Past answers if any exist
+          (async () => {
+            const { responses } = await fetch(
+              `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
+            ).then(r => r.json());
+            if (responses.length) past.disabled = false;
+          })();
+  
+          buttonsDiv.append(card);
+        }
+  
+        // e) append this topic container to the document body
+        document.body.append(container);
       }
     }
   },
+  
 
   /* ---------- annotate ---------- */
   annotate: {
@@ -200,16 +304,21 @@ const Pages = {
         fetch(`/dataset_count/${ds}`).then(r => r.json())
       ]);
 
-      const bar  = document.getElementById('saveProgress');
-      const txt  = document.getElementById('progressText');
-      bar.style.display = 'block';
-      bar.max   = total;
-      bar.value = answered;
-      txt.textContent = `${answered} / ${total}`;  
+      this.bar  = document.getElementById('saveProgress');
+      this.txt  = document.getElementById('progressText');
+      this.bar.style.display = 'block';
+      this.bar.max   = total;
+      this.bar.value = answered;
+      this.txt.textContent = `${answered} / ${total}`;  
 
       if (data.error){ this.showMsg(data.error); return; }
       if (data.done) {
-        this.showMsg("All done! Click 'Submit Dataset' to grade your responses.");
+        this.qTxt.textContent        = '';
+        this.imgDiv.innerHTML        = '';
+        this.qTxt.style.display      = 'none';
+        this.imgDiv.style.display    = 'none';
+
+        this.showMsg("All done! Click 'Submit Dataset' to log your responses.");
       
         // check whether they've already submitted
         const pid = Common.pid();
@@ -229,34 +338,46 @@ const Pages = {
       
         btn.addEventListener('click', async () => {
           if (!window.confirm(
-            'Are you sure you want to submit your dataset? You will not be able to modify your answers afterward.'
-          )) {
-            return;
-          }
+                'Are you sure you want to submit your dataset? You will not be able to modify your answers afterward.'
+          )) return;
         
-          btn.disabled    = true;
+          btn.disabled  = true;
           btn.textContent = 'Running…';
-      
-          // 1) run your python script
-          const runResp = await fetch('/run-python', { method: 'POST' });
-          const runJson = await runResp.json();
-          if (!runResp.ok) {
-            alert('Error running script:\n' + runJson.error);
-            btn.disabled    = false;
+        
+          /* show the spinner overlay */
+          const loader = document.getElementById('loader');
+          loader.hidden = false;
+        
+          try {
+            /* ---- run the long python job ---- */
+            const runResp = await fetch('/run-python', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json' },
+              body: JSON.stringify({ prolificID: pid, dataset: ds })
+            });
+            const runJson = await runResp.json();
+        
+            if (!runResp.ok) throw new Error(runJson.error || 'server error');
+        
+            loader.hidden = true; 
+            await this.showModal(runJson.output); 
+        
+            /* mark submitted */
+            // await fetch('/submit_dataset', {
+            //   method:'POST',
+            //   headers:{ 'Content-Type':'application/json' },
+            //   body: JSON.stringify({ prolificID: pid, dataset: ds, value: runJson.output })
+            // });
+        
+            location.href = 'select_dataset.html';
+        
+          } catch (e) {
+            alert('Error running script:\n' + e.message);
+            btn.disabled  = false;
             btn.textContent = 'Submit Dataset';
-            return;
-          } 
-
-          alert('Response:\n' + runJson.output)
-
-          // 2) mark as submitted so it's disabled on reload
-          await fetch('/submit_dataset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prolificID: pid, dataset: ds })
-          });
-      
-          btn.textContent = 'Submitted';
+          } finally {
+            loader.hidden = true;      // always hide overlay
+          }
         });
       
         // insert it right under the status message
@@ -277,6 +398,15 @@ const Pages = {
       this.render();
 
       this.status.textContent = '';
+    },
+
+    showModal(text){
+      return new Promise(resolve => {
+        const dlg  = document.getElementById('msgBox');
+        document.getElementById('msgText').textContent = text;
+        dlg.showModal();                   // non-blocking
+        dlg.onclose = () => resolve();     // fires when user clicks OK
+      });
     },
 
     showMsg(msg){
@@ -344,7 +474,7 @@ const Pages = {
         dataset:       Common.ds(),
         prolificID:    Common.pid(),
         questionIndex: this.current.questionIndex,
-        QID:           q.uid,
+        uid:           q.uid,
         question:      q.Question,
         answer:        document.getElementById('qAnswer').value,
         difficulty:    document.getElementById('difficulty').value,
@@ -481,7 +611,7 @@ const Pages = {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({
                   dataset:     Common.ds(),
-                  responseID:  r.responseID,
+                  uid:         r.uid,
                   answer:      ansIn.value,
                   difficulty:  diffIn.value,
                   badQuestion: badBox.checked,
@@ -575,36 +705,44 @@ Pages.admin = {
     this.current = pid;
     document.getElementById('status').textContent =
       `Loading datasets for ${pid}…`;
-
+  
     const assigned = new Set(
       await fetch(`/admin/user_datasets/${pid}`).then(r => r.json())
     );
-
+  
     const tbl = document.getElementById('dsTable');
     tbl.innerHTML = '';
     const head = tbl.insertRow();
-    head.innerHTML = '<th>Dataset</th><th>Description</th><th>Assigned?</th>';
-
+    head.innerHTML =
+      '<th>Dataset</th><th>Topic</th><th>Description</th><th>Assigned?</th>';
+  
     this.datasets.forEach(ds => {
       const row = tbl.insertRow();
-
-      /* label + edit button */
+  
+      /* ── Dataset label + actions ───────────────────────── */
       const labelTd = row.insertCell();
       labelTd.innerHTML = `
         <div class="dataset-header">
           <span class="dsLabel" data-id="${ds.id}">${ds.label}</span>
           <div class="dataset-actions">
-            <button class="editMeta" data-id="${ds.id}">✎ Edit</button>
+            <button class="editLabel"  data-id="${ds.id}">✎</button>
             <button class="inviteBtn" data-id="${ds.id}">➕ Invite</button>
           </div>
         </div>`;
-      /* description cell */
+  
+      /* ── Topic (with inline edit) ──────────────────────── */
+      const topicTd = row.insertCell();
+      topicTd.innerHTML = `
+        <span class="dsTopic" data-id="${ds.id}">${ds.topic || ''}</span>
+        <button class="editTopic" data-id="${ds.id}">✎</button>`;
+  
+      /* ── Description (with inline edit) ────────────────── */
       const descTd = row.insertCell();
-      descTd.className = 'dsDesc';
-      descTd.dataset.id = ds.id;
-      descTd.textContent = ds.description || '';
-
-      /* assignment checkbox */
+      descTd.innerHTML = `
+        <span class="dsDesc" data-id="${ds.id}">${ds.description || ''}</span>
+        <button class="editDesc" data-id="${ds.id}">✎</button>`;
+  
+      /* ── Assignment checkbox ───────────────────────────── */
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = assigned.has(ds.id);
@@ -612,34 +750,38 @@ Pages.admin = {
         this.toggleAssign(pid, ds.id, cb.checked));
       row.insertCell().append(cb);
     });
-
-    /* attach meta-edit handlers */
-    tbl.querySelectorAll('.editMeta').forEach(btn =>
-      btn.addEventListener('click', () => this.editMeta(btn.dataset.id)));
-
+  
+    /* ── Attach handlers for every edit button ───────────── */
+    tbl.querySelectorAll('.editLabel')
+       .forEach(btn => btn.addEventListener('click',
+         () => this.editField(btn.dataset.id, 'label')));
+  
+    tbl.querySelectorAll('.editTopic')
+       .forEach(btn => btn.addEventListener('click',
+         () => this.editField(btn.dataset.id, 'topic')));
+  
+    tbl.querySelectorAll('.editDesc')
+       .forEach(btn => btn.addEventListener('click',
+         () => this.editField(btn.dataset.id, 'description')));
+  
+    /* invite-link code stays exactly the same */
     tbl.querySelectorAll('.inviteBtn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const dsID = btn.dataset.id;
         const link = `${window.location.origin}/login.html?dataset=${encodeURIComponent(dsID)}`;
-    
         const ta = document.createElement('textarea');
         ta.value = link;
         ta.style.position = 'fixed';
         ta.style.opacity  = '0';
         document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
+        ta.focus(); ta.select();
         let ok = false;
-        try {
-          ok = document.execCommand('copy');
-        } catch (e) {
-          console.error('Fallback copy failed:', e);
-        }
+        try { ok = document.execCommand('copy'); } catch {}
         document.body.removeChild(ta);
         showToast(ok ? 'Invite link copied!' : 'Copy failed');
       });
     });
-
+  
     document.getElementById('status').textContent =
       `Editing assignments for ${pid}`;
   },
@@ -651,33 +793,153 @@ Pages.admin = {
     });
     if (!r.ok) { alert('DB error — change reverted'); this.loadForUser(pid); }
   },
-
-  /* inline metadata editor for label + description */
-  async editMeta (dsID) {
-    const labelSpan = document.querySelector(`.dsLabel[data-id="${dsID}"]`);
-    const descTd    = document.querySelector(`.dsDesc[data-id="${dsID}"]`);
-
-    const newLabel = prompt('Dataset label:', labelSpan.textContent.trim());
-    if (newLabel === null) return;
-    const newDesc  = prompt('Dataset description:', descTd.textContent.trim());
-    if (newDesc === null) return;
-
+  
+  /* ----------------------------------------------------- */
+  /* generic one-field editor (label / topic / description)*/
+  async editField (dsID, field) {
+    const ds = this.datasets.find(d => d.id === dsID);        // cache row
+  
+    const current = ds?.[field] ?? '';
+    const promptText = {
+      label:       'Dataset label:',
+      topic:       'Dataset topic:',
+      description: 'Dataset description:'
+    }[field];
+  
+    const newVal = prompt(promptText, current);
+    if (newVal === null) return;            // user hit Cancel
+  
+    /* 1) build a *complete* payload that preserves the other two columns */
+    const body = {
+      label:       field === 'label'       ? newVal : ds.label       ?? dsID,
+      description: field === 'description' ? newVal : ds.description ?? '',
+      topic:       field === 'topic'       ? newVal : ds.topic       ?? ''
+    };
+  
+    /* 2) save to server */
     const r = await fetch(`/admin/dataset_meta/${dsID}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ label:newLabel, description:newDesc })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
     if (!r.ok) { alert('Save failed'); return; }
-
-    /* update UI */
-    labelSpan.textContent = newLabel;
-    descTd.textContent    = newDesc;
-
-    /* keep local cache in sync so a reload keeps edits */
-    const ds = this.datasets.find(d => d.id === dsID);
-    if (ds) { ds.label = newLabel; ds.description = newDesc; }
+  
+    /* 3) update UI + local cache */
+    ds[field] = newVal;                          // cache stays in sync
+    const cellSel = {
+      label: '.dsLabel',
+      topic: '.dsTopic',
+      description: '.dsDesc'
+    }[field];
+    document.querySelector(`${cellSel}[data-id="${dsID}"]`).textContent = newVal;
   }
 };
 
+/* ------------------------------------------------
+ * Pages.status – drives status.html
+ * ------------------------------------------------ */
+Pages.status = {
+  async init () {
+    Common.initNavbar();
+
+    const topics = ['Military', 'Natural World', 'Urban', 'Aviation', 'Test']; // extend as needed
+    const statusBox = document.getElementById('status');              // lives in the **first** container
+    statusBox.textContent = 'Loading…';
+
+    /* small helper to build <table> w/ header row */
+    const makeTable = headers => {
+      const tbl = document.createElement('table');
+      tbl.innerHTML = `<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+      return tbl;
+    };
+
+    for (const topic of topics) {
+      let data;
+      try {
+        const r = await fetch(`/admin/campaign_status/${topic}`);
+        if (!r.ok) throw new Error();
+        data = await r.json();
+      } catch {
+        console.warn(`Campaign “${topic}” not found or empty`);
+        continue;                       // skip missing campaigns
+      }
+
+      /* ── build one independent dashboard per campaign ── */
+      const container = document.createElement('div');
+      container.className = 'container';
+
+      /* header */
+      const h = document.createElement('h2');
+      h.textContent = `${topic} Campaign`;
+      container.append(h);
+
+      /* campaign metadata */
+      if (data.meta) {
+        const p = document.createElement('p');
+        p.style.marginTop = '.25rem';
+        p.textContent =
+          `Current index: ${data.meta.curIndex}   •   `
+        + `Max images: ${data.meta.numImages}`;
+        container.append(p);
+      }
+
+      /* accuracy table (User • Accuracy) */
+      const accTbl = makeTable(['User', 'Accuracy']);
+      data.users.forEach(u => {
+        const tr = accTbl.insertRow();
+        tr.innerHTML = `
+          <td>${u.pid}</td>
+          <td>${u.accuracy == null ? '—' : (u.accuracy*100).toFixed(1)+'%'}</td>`;
+      });
+      container.append(accTbl);
+
+      /* progress table (Dataset • User • Status • Answered • Last) */
+      const progTbl = makeTable(
+        ['Dataset', 'User', 'Status', 'Answered', 'Last Response']
+      );
+      
+      /* --- group rows by dataset so we can rowspan the first cell --- */
+      const byDataset = {};
+      data.progress.forEach(p => {
+        (byDataset[p.dataset] ||= []).push(p);
+      });
+      
+      Object.entries(byDataset).forEach(([dsName, rows]) => {
+        /* keep the order stable – alphabetical by user */
+        rows.sort((a, b) => a.pid.localeCompare(b.pid));
+        const span = rows.length;
+      
+        rows.forEach((p, idx) => {
+          const tr = progTbl.insertRow();
+      
+          /* first row → output the dataset cell with rowspan */
+          if (idx === 0) {
+            const td = tr.insertCell();
+            td.rowSpan = span;
+            td.textContent = dsName;
+          }
+      
+          const badge = p.submitted
+            ? '<span class="badge complete">Completed</span>'
+            : '<span class="badge pending">Pending</span>';
+          const last  = p.lastTS ? new Date(p.lastTS).toLocaleString() : '—';
+      
+          tr.insertCell().textContent = p.pid;               // User
+          tr.insertCell().innerHTML   = badge;               // Status
+          tr.insertCell().textContent = `${p.answered} / ${p.total}`;
+          tr.insertCell().textContent = last;
+        });
+      });
+      
+      container.append(progTbl);
+
+      /* add the whole block after the initial “status” container */
+      document.body.appendChild(container);
+    }
+
+    statusBox.textContent = '';      // clear “Loading…”
+  }
+};
 
 
 

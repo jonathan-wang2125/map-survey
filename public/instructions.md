@@ -1,3 +1,5 @@
+Click **Home** on the navigation bar when you are ready to proceed.
+
 # Instructions
 We will be evaluating how different AIs interact with maps. You will be given a map and a question to answer about it. The questions concern such topics as physical features in the map, information from pre-existing map knowledge like latitude lines, and information from charts.
 
@@ -11,13 +13,13 @@ We will be evaluating how different AIs interact with maps. You will be given a 
    A good answer SHOULD…  
    * Be factual and clear.
    * Rely on the map, not pre-existing knowledge of geography (although it may rely on existing knowledge of map conventions).
-   …
 
 2. <ins>**Determine if it’s a good or bad question**</ins>
 
    A good question SHOULD…  
    * Be answerable with just the map, and an ordinary person’s knowledge of how to interpret maps.
-   * Have a single clear answer - if there are multiple correct answers, it’s not a good question. 
+   * Have a single clear answer - if there are multiple correct answers, it’s not a good question.
+   * Sometimes questions will not have an answer; simply write 'None' or 'There is no "X" on the map'.  
 
    A good question should **NOT**…  
    * Be a count value greater than 10.

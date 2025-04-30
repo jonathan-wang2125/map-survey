@@ -224,3 +224,49 @@ nav.navbar .welcome .nav-user {
 .dataset-card button {
   width: 100%;              
 }
+
+.loader{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  background:rgba(255,255,255,.8);
+  z-index:2000;
+}
+.spinner{
+  width:48px;height:48px;margin-bottom:.8rem;
+  border:5px solid #ccc;border-top-color:#006699;border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+
+/* NEW: keep loader hidden until JS shows it */
+.loader[hidden]{ display:none !important; }
+
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.msgbox{
+  padding:1.5rem 2rem;
+  border:none;
+  border-radius:8px;
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+  font:1rem/1.4 Arial,Helvetica,sans-serif;
+  
+  /* ✦ center the dialog */
+  position:fixed;          /* take it out of normal flow          */
+  top:50%; left:50%;       /* move origin to middle of viewport   */
+  transform:translate(-50%, -50%); /* pull it back by half width & height */
+}
+.msgbox::backdrop{background:rgba(0,0,0,.4)}
+
+.dataset-section {
+  margin-bottom: 2rem;
+}
+.dataset-section > h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #ddd;
+  padding-bottom: 0.25rem;
+}
+.dataset-buttons-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}

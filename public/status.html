@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Campaign Status</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/css/styles.css"><!-- global sheet -->
+  <style>
+    table{border-collapse:collapse;width:100%;margin-top:1rem}
+    th,td{border:1px solid #ccc;padding:.4rem;text-align:center}
+    th{background:#eee}
+    .badge       {display:inline-block;padding:.15em .6em;border-radius:12px;font-size:.8rem;color:#fff}
+    .complete    {background:#2a9d8f}
+    .pending     {background:#e76f51}
+  </style>
+</head>
+
+<body data-page="status">
+  <div class="container">
+    <h1>Campaign Status</h1>
+
+    <div id="status" style="margin:.5rem 0;">Loading…</div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/loadNavbar.js" defer></script>
+  <script src="/js/app.js"       defer></script>
+</body>
+</html>
