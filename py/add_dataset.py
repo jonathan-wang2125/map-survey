@@ -22,7 +22,7 @@ import sys, json, uuid, redis, requests
 from pathlib import Path
 from tqdm import tqdm               # purely for a nice progress bar
 
-REDIS_URL  = "redis://localhost:6379/0"
+REDIS_URL  = "redis://localhost:6397/0"
 SERVER_URL = "http://localhost:3000"
 BATCH_SIZE = 5_000
 

@@ -31,7 +31,7 @@ from tqdm import tqdm
 from typing import Any, Dict
 
 # ──────────────────────────────────────────────────────────────────────────
-REDIS_URL   = "redis://localhost:6379/0"
+REDIS_URL   = "redis://localhost:6397/0"
 BATCH_SIZE  = 5_000
 USER_SET    = "v1:usernames"        # where all PIDs live
 META_SUFFIX = b":meta"

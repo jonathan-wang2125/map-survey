@@ -6,7 +6,7 @@ purge_non_v1.py  –  delete every key that does **not** start with 'v1:'.
 import redis
 from tqdm import tqdm
 
-REDIS_URL  = "redis://localhost:6379/0"   # adjust as needed
+REDIS_URL  = "redis://localhost:6397/0"   # adjust as needed
 BATCH_SIZE = 5_000                        # pipeline flush size
 
 def main() -> None:

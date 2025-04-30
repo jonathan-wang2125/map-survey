@@ -13,7 +13,7 @@ newMilitaryForAnnotators →  MilitaryPromptTest
 """
 
 # ------------ CONFIG --------------------------------------------------------
-REDIS_URL      = "redis://localhost:6379/0"
+REDIS_URL      = "redis://localhost:6397/0"
 CATALOGUE_FILE = "data/datasets.jsonl"          # path to datasets.jsonl
 DATA_DIR       = "data"                    # directory that holds all dataset files
 # ----------------------------------------------------------------------------

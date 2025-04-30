@@ -15,14 +15,14 @@ import json, redis
 from textwrap import indent
 
 # ── 1. configure here ──────────────────────────────────────────────────
-REDIS_URL = "redis://localhost:6379/0"
+REDIS_URL = "redis://localhost:6397/0"
 
 TOPICS = {
     "Military":        107,
     "Natural World":   118,
     "Urban":           113,
     "Aviation":        68,
-    "Test":            2,
+    "Test":            10,
 }  # topic → numImages limit
 # ────────────────────────────────────────────────────────────────────────
 

@@ -75,7 +75,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/maps', express.static(path.join(__dirname, 'maps')));
 
-const redis = createClient({ url: 'redis://localhost:6379' });
+const redis = createClient({ url: 'redis://localhost:6397' });
 
 /* prefix helpers --------------------------------------------------------- */
 const v1            = key => `v1:${key}`;

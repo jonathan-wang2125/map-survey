@@ -14,7 +14,7 @@ Safety nets
 import sys, redis, json, requests
 from tqdm import tqdm                     # pip install tqdm (nice progress bar)
 
-REDIS_URL   = "redis://localhost:6379/0"
+REDIS_URL   = "redis://localhost:6397/0"
 SERVER_URL = "http://localhost:3000"
 BATCH_SIZE  = 5_000                       # pipeline flush size
 
