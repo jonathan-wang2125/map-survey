@@ -11,7 +11,7 @@ const bodyParser    = require('body-parser');
 const { createClient } = require('redis');
 const sharp         = require('sharp');
 const { execFile }  = require('child_process');
-const { pythonBin, pythonRoot, gradeDataset, createDataset} = require('./public/config/paths');
+const { pythonBin, pythonRoot, gradeDataset, createDataset, addEval, surveyPython, surveyRoot} = require('./public/config/paths');
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
@@ -32,7 +32,7 @@ const MAX_RESPONSES = 10;
  *  - v1:datasets:<dataset_name>:meta     -> JSON_VALUE of dataset metadata
  *                                            { label, description, topic }
  *  - v1:datasets:<dataset_name>:<uid>    -> JSON_VALUE of question metadata
- *                                            { uid, Question, Map, Expression Complexity }
+ *                                            { uid, Question, Map, Expression Complexity, Label }
  * 
  *  - v1:campaigns:<topic>                 -> SET of datasets
  *  - v1:campaigns:<topic>:meta            -> JSON_VALUE of campaign metadata
@@ -42,8 +42,7 @@ const MAX_RESPONSES = 10;
  *  - v1:<user_name>:<dataset_name>:<uid> -> JSON_VALUE of user response
  *                                            { uid, prolificID, dataset, question, answer, 
  *                                              difficulty, badQuestion, badReason, 
- *                                              origTimestamp, editTimestamp }
- * 
+ *                                              origTimestamp, editTimestamp, eval }
  */
 
 /**
@@ -189,10 +188,20 @@ async function getNextDataset (pid, currentDs) {
     const numAssigned = await redis.sCard(`v1:assignments:${cand}`);
     if (numAssigned >= 2) continue;                      // already full
   
-    const already = await redis.sIsMember(`v1:assignments:${cand}`, pid);
-    if (!already) {                                     // slot free + user not on it
+    const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
+    if (!assigned) {                                     // slot free + user not on it
       nextDs = cand;
       break;
+    }
+  }
+
+  for (const cand of existing) {
+    if (cand.endsWith('Accuracy')){
+      const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
+      if (!assigned) {                                     // user not on it
+        nextDs = cand;
+        break;
+      }
     }
   }
 
@@ -236,7 +245,7 @@ async function getNextDataset (pid, currentDs) {
 
     /* ---- extract and sanity-check ----------------------------------- */
     const metaFromPy = payload.dataset_meta;
-    console.log(payload)
+    // console.log(payload)
     if (!metaFromPy || !metaFromPy.topic || !Array.isArray(payload.dataset_entries))
       throw new Error('generator payload missing required fields');
 
@@ -369,11 +378,16 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   const users = Array.from(userSet);
 
   /* --- accuracy per user on the <campaign>Accuracy dataset --- */
-  const accDS = `${topic}Accuracy`;
   const accPromises = users.map(async pid => {
-    const key = `v1:${pid}:${accDS}:meta`;
-    const val = await redis.get(key);
-    return { pid, accuracy: val ? Number(val) || null : null };
+    const key = `v1:${pid}:${topic}Accuracy:meta`;
+    const raw = await redis.get(key);      // raw is either "0", "0.94", "submitted", or null
+    const num = Number(raw);               // Number("0") -> 0; Number("submitted") -> NaN; Number(null) -> 0
+    // note: Number(null) is 0, but redis.get(null-key) actually returns null, not the string "null"
+    const accuracy = (raw !== null && Number.isFinite(num))
+      ? num
+      : null;
+
+    return { pid, accuracy };
   });
   const accuracyArr = await Promise.all(accPromises);
 
@@ -473,7 +487,7 @@ app.get('/get_questions', async (req, res) => {
   if (!prolificID || !dataset)      return res.status(400).json({ error: 'params' });
   if (!DATASET_IDS.includes(dataset)) return res.status(400).json({ error: 'invalid ds' });
 
-  await ensureUser(prolificID);
+  // await ensureUser(prolificID);
 
   const qs = await getDatasetQuestions(dataset);
 
@@ -485,14 +499,16 @@ app.get('/get_questions', async (req, res) => {
     if (await redis.exists(v1AnswerKey(prolificID, dataset, uid))) continue;
 
     /* how many total answers exist for this question? */
-    let count = 0;
-    for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
-      count++;
-    }
+    // let count = 0;
+    // for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
+    //   count++;
+    // }
 
-    if (count < MAX_RESPONSES) {
+    // console.log(count, MAX_RESPONSES)
+    // if (count < MAX_RESPONSES) {
+      console.log(prolificID, dataset, i)
       return res.json({ done: false, questionIndex: i, question: q });
-    }
+    // }
   }
   res.json({ done: true });
 });
@@ -512,8 +528,8 @@ app.post('/submit_question', async (req, res) => {
   for await (const _ of redis.scanIterator({ MATCH: `v1:*:${dataset}:${uid}` })) {
     count++;
   }
-  if (count >= MAX_RESPONSES)
-    return res.status(400).json({ error: 'No slots left' });
+  // if (count >= MAX_RESPONSES)
+  //   return res.status(400).json({ error: 'No slots left' });
 
   /* store answer */
   await redis.set(
@@ -549,6 +565,28 @@ app.get('/dataset_submission/:pid/:ds', async (req, res) => {
   const { pid, ds } = req.params;
   const exists = await redis.exists(`v1:${pid}:${ds}:meta`);
   res.json({ submitted: exists === 1 });
+});
+
+app.get('/get_question_by_uid', async (req, res) => {
+  const dsID = req.query.dataset;
+  const uid  = req.query.uid;
+
+  if (!dsID || !uid) {
+    return res.status(400).json({ error: 'Missing dataset or uid' });
+  }
+
+  const key = `v1:datasets:${dsID}:${uid}`;
+  try {
+    const raw = await redis.get(key);   // node‐redis v4 supports promise syntax
+    if (!raw) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+    const obj = JSON.parse(raw);
+    return res.json(obj);
+  } catch (e) {
+    console.error('Redis error:', e);
+    return res.status(500).json({ error: 'Server error' });
+  }
 });
 
 
@@ -646,7 +684,7 @@ app.post('/run-python', async (req, res) => {
   let output;
   let nextDs;
   let accuracy = 'submitted';
-  if (dataset.endsWith('Accuracy')) {
+  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training')) {
     execFile(
       pythonBin,
       [gradeDataset, prolificID, dataset],    // pass PID and dataset to the script
@@ -662,8 +700,15 @@ app.post('/run-python', async (req, res) => {
           // keep only the last non-empty line (in case Python prints warnings)
           const lastLine = stdout.split('\n').filter(Boolean).pop() || '{}';
           accuracy = JSON.parse(lastLine).accuracy;
+          save_file = JSON.parse(lastLine).eval_file;
           if (typeof accuracy !== 'number' && accuracy !== 'string')
             throw new Error('missing accuracy field');
+          execFile(surveyPython, [addEval, prolificID, dataset, save_file], {cwd: surveyRoot}, async (err, stdout, stderr) =>{
+            if (err) {
+              console.error('Python error:', stderr);
+              return res.status(500).json({ error: 'database update failed' });
+            }
+          })
         } catch (e) {
           console.error('Bad grader output:', stdout);
           return res.status(500).json({ error: 'invalid grader output' });
@@ -671,10 +716,15 @@ app.post('/run-python', async (req, res) => {
 
         if (typeof accuracy === 'string') {
           output = 'Thank you for your submission.'
-        } else  if (accuracy >= 0.85) {             // only then branch to new work
+        } else  if (dataset.endsWith('Training') || (accuracy >= 0.85)) {             // only then branch to new work
           try { nextDs = await getNextDataset(prolificID, dataset); }
           catch (e) { return res.status(500).json({ error: e.message }); }
-          output = `Congratulations! You have passed the test with ${(accuracy*100).toFixed(1)}% accuracy. Please proceed to the next available dataset on the "Home" page.`
+          if (dataset.endsWith('Training')){
+            output = `You scored ${(accuracy*100).toFixed(1)}% accuracy in training. Please review your answers and understand what you might have done wrong before proceeding to the evaulation dataset on the "Home" page.`
+          }
+          else {
+            output = `Congratulations! You have passed the test with ${(accuracy*100).toFixed(1)}% accuracy. Please proceed to the next available dataset on the "Home" page.`
+          }
         }
         else {
           output = 'We are sorry, you do not meet the requirements to continue this study. Thank you for your participation.'

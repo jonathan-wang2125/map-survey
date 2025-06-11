@@ -270,3 +270,12 @@ nav.navbar .welcome .nav-user {
   flex-wrap: wrap;
   gap: 1rem;
 }
+
+/* optional: remove default button styling for a clean “✖” */
+.user-cell .removeUserBtn {
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+  padding: 4px;
+}

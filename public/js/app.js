@@ -63,86 +63,6 @@ const Pages = {
     }
   },
 
-  /* ---------- dataset select ---------- */
-  // select: {
-  //   async init () {
-  //     Common.ensureLogin();
-  //     Common.initNavbar();
-
-  //     const pid   = Common.pid();
-  //     const wrap  = document.getElementById('datasetButtons');
-  //     wrap.textContent = 'Loading…';
-  
-  //     /* datasets this user may access */
-  //     const datasets = await fetch(`/user_datasets/${pid}`).then(r => r.json());
-  
-  //     if (!datasets.length) {
-  //       wrap.textContent = 'No datasets have been assigned to your account.';
-  //       return;
-  //     }
-  
-  //     wrap.innerHTML = '';  // clear loading text
-  
-  //     for (const ds of datasets) {
-  //       const card = document.createElement('div');
-
-  //       const { submitted } = await fetch(
-  //         `/dataset_submission/${pid}/${ds.id}`
-  //       ).then(r => r.json());
-  
-  //       /* title */
-  //       const h = document.createElement('h3');
-  //       h.textContent = ds.label;
-  //       card.append(h);
-  
-  //       card.classList.add('dataset-card')
-
-  //       /* Annotate */
-  //       const anno = document.createElement('button');
-  //       anno.textContent = 'Annotate';
-  //       anno.onclick = () => {
-  //         localStorage.setItem('datasetID', ds.id);
-  //         location.href = 'index.html';
-  //       };
-  //       // if(submitted){
-  //       //   anno.disabled = true;
-  //       // }
-  
-  //       /* Past answers */
-  //       const past = document.createElement('button');
-  //       past.textContent = 'Past answers';
-  //       past.disabled = true;
-  //       past.onclick = () => {
-  //         localStorage.setItem('datasetID', ds.id);
-  //         location.href = 'past_answers.html';
-  //       };
-
-  //       /* Status */
-  //       const badge = document.createElement('span');
-  //       badge.classList.add(
-  //         'status-badge',
-  //         submitted ? 'complete' : 'incomplete'
-  //       );
-  //       badge.textContent = submitted ? 'Submitted' : 'Pending';
-
-  //       const actions = document.createElement('div');
-  //       actions.classList.add('actions');
-  //       actions.append(anno, past, badge);
-  //       card.append(actions);
-  
-  //       /* enable Past answers if any exist */
-  //       (async () => {
-  //         const j = await fetch(
-  //           `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
-  //         ).then(r => r.json());
-  //         if (j.responses.length) past.disabled = false;
-  //       })();
-  
-  //       wrap.append(card);
-  //     }
-  //   }
-  // },
-
   select: {
     async init() {
       Common.ensureLogin();
@@ -267,15 +187,15 @@ const Pages = {
       this.badLabel = document.getElementById('badReasonLabel');
 
       /* Buttons */
-      document.getElementById('pastAnswersBtn')
-        .addEventListener('click',()=>location.href='past_answers.html');
+      // document.getElementById('pastAnswersBtn')
+      //   .addEventListener('click',()=>location.href='past_answers.html');
 
-      document.getElementById('popOutBtn')
-        .addEventListener('click',()=>{
-          const feat = `toolbar=no,location=no,menubar=no,` +
-                       `width=${screen.width},height=${screen.height},fullscreen=yes`;
-          window.open(window.location.href,'_blank',feat);
-        });
+      // document.getElementById('popOutBtn')
+      //   .addEventListener('click',()=>{
+      //     const feat = `toolbar=no,location=no,menubar=no,` +
+      //                  `width=${screen.width},height=${screen.height},fullscreen=yes`;
+      //     window.open(window.location.href,'_blank',feat);
+      //   });
 
       this.badBox.addEventListener('change', () => {
         const on = this.badBox.checked
@@ -513,7 +433,6 @@ const Pages = {
       Common.initNavbar();
       if (!Common.ds()) location.href = '/select_dataset.html';
 
-      // 1) Figure out whether this dataset has been submitted already
       const pid = Common.pid();
       const ds  = Common.ds();
       const { submitted } = await fetch(
@@ -526,26 +445,108 @@ const Pages = {
       const rsp = await fetch(
         `/qresponses/${Common.pid()}?dataset=${encodeURIComponent(Common.ds())}`
       );
-      if (!rsp.ok) { wrap.textContent = 'Server error – try again later.'; return; }
+      if (!rsp.ok) { 
+        wrap.textContent = 'Server error – try again later.'; 
+        return; 
+      }
 
       const { responses } = await rsp.json();
-      if (!responses.length) { wrap.textContent = 'No answers yet.'; return; }
+      if (!responses.length) { 
+        wrap.textContent = 'No answers yet.'; 
+        return; 
+      }
 
+      // Clear and then insert the filter button
       wrap.innerHTML = '';
 
-      responses.forEach(r => {
+      // 1) Create the filter toggle button
+      const filterBtn = document.createElement('button');
+      filterBtn.id = 'filterIncorrectBtn';
+      filterBtn.textContent = 'Show Incorrect Only';
+      filterBtn.style.marginBottom = '1rem';
+      wrap.appendChild(filterBtn);
+
+      // 2) Create a container for all cards
+      const cardsContainer = document.createElement('div');
+      cardsContainer.id = 'cardsContainer';
+      wrap.appendChild(cardsContainer);
+
+      // 3) Boolean tracking whether filter is on
+      let filterOn = false;
+
+      // 4) When the button is clicked, toggle filter
+      filterBtn.addEventListener('click', () => {
+        filterOn = !filterOn;
+        filterBtn.textContent = filterOn 
+          ? 'Show All Answers' 
+          : 'Show Incorrect Only';
+
+        // Show/hide cards based on their data-eval attribute
+        const allCards = cardsContainer.querySelectorAll('.answer-card');
+        allCards.forEach(card => {
+          const evalVal = card.getAttribute('data-eval');
+          if (filterOn) {
+            // if filtering: hide any card that is not "Incorrect"
+            if (evalVal !== 'Incorrect') {
+              card.style.display = 'none';
+            }
+          } else {
+            // if not filtering: show all cards
+            card.style.display = '';
+          }
+        });
+      });
+
+      // 5) Now build each card inside cardsContainer
+      for (const r of responses) {
+        // (a) Attempt to load the stored question JSON (to get its Label)
+        let questionJSON = null;
+        try {
+          const qobj = await fetch(
+            `/get_question_by_uid?dataset=${encodeURIComponent(ds)}&uid=${encodeURIComponent(r.uid)}`
+          );
+          if (qobj.ok) {
+            questionJSON = await qobj.json();
+          } else {
+            console.warn(`Could not fetch question ${r.uid}: ${qobj.status}`);
+          }
+        } catch (e) {
+          console.warn(`Error fetching question ${r.uid}:`, e);
+        }
+
+        // If for some reason we didn’t get a Label, fall back to an empty string
+        const correctLabel = questionJSON?.Label ?? '';
+
+        // Create the card
         const card = document.createElement('div');
         card.className = 'answer-card';
+
+        // IMPORTANT: set data-eval so the filter can read it
+        card.setAttribute('data-eval', r.llm_eval);
 
         /* -------- inner HTML -------- */
         card.innerHTML = `
           <p><strong>Q:</strong> ${r.question}</p>
 
           <label>Your Answer:
-            <input type="text" value="${r.answer}">
+            ${
+              r.llm_eval === "Incorrect"
+                ? `<input type="text" value="✗ ${r.answer}" style="color:red;">`
+                : `<input type="text" value="${r.answer}">`
+            }
           </label>
 
-          <label>Difficulty (1-10):
+          ${
+            r.llm_eval === "Incorrect" && correctLabel !== null
+            ? `<p class="correct-label" style="color:green; margin:0.25rem 0 0 0; font-style:italic;">
+                Correct answer: ${correctLabel}
+              </p>`
+            : ``
+          }
+
+          <br>
+
+          <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
             <input type="number" min="1" max="10" value="${r.difficulty ?? ''}">
           </label>
 
@@ -553,19 +554,17 @@ const Pages = {
             <span class="inline-flex">
               <input type="checkbox" ${r.badQuestion ? 'checked' : ''}>
               Bad&nbsp;Question
-            </span
+            </span>
           </label>
 
           <label id="badReasonLabel"
-              for="badReason"
-              style="display:none; font-weight:500; margin-bottom:.25rem;${r.badQuestion ? '' : 'display:none;'}">
+                for="badReason"
+                style="display:none; font-weight:500; margin-bottom:.25rem;${r.badQuestion ? '' : 'display:none;'}">
             Provide an answer and difficulty assuming the question is fixed
           </label>
           <textarea rows="1"
                     placeholder="Why is it bad / ambiguous / impossible?"
-                    style="width:100%;margin-top:.4rem;resize:vertical;${
-                      r.badQuestion ? '' : 'display:none;'
-                    }">${r.badReason ?? ''}</textarea>
+                    style="width:100%;margin-top:.4rem;resize:vertical;${r.badQuestion ? '' : 'display:none;'}">${r.badReason ?? ''}</textarea>
 
           <div style="margin-top:.4rem;">
             <button class="editBtn">Edit</button>
@@ -606,7 +605,7 @@ const Pages = {
             [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = setDis));
             editBt.textContent = editing ? 'Save' : 'Edit';
 
-            if (!editing) {                      // now saving
+            if (!editing) { // now saving
               await fetch(`/edit_qresponse/${Common.pid()}`, {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({
@@ -628,10 +627,12 @@ const Pages = {
             window.open(`/maps/${mapBt.dataset.file}`, '_blank'));
         }
 
-        wrap.append(card);
-      });
+        // Append the card into cardsContainer (not directly into wrap)
+        cardsContainer.appendChild(card);
+      }
     }
   },
+
 
   /* ---------- instructions ---------- */
   instructions: {
@@ -889,7 +890,11 @@ Pages.status = {
         const tr = accTbl.insertRow();
         tr.innerHTML = `
           <td>${u.pid}</td>
-          <td>${u.accuracy == null ? '—' : (u.accuracy*100).toFixed(1)+'%'}</td>`;
+          <td>${
+            u.accuracy != null && Number.isFinite(parseFloat(u.accuracy))
+              ? (parseFloat(u.accuracy) * 100).toFixed(1) + '%'
+              : '—'
+          }</td>`;
       });
       container.append(accTbl);
 
@@ -918,13 +923,25 @@ Pages.status = {
             td.rowSpan = span;
             td.textContent = dsName;
           }
+
+          const userTd = tr.insertCell();
+          userTd.classList.add('user-cell');
+          userTd.innerHTML = `
+            <span class="user-name">${p.pid}</span>
+            <button
+              class="removeUserBtn"
+              data-pid="${p.pid}"
+              data-dataset="${dsName}"
+              aria-label="Remove ${p.pid}"
+            >✖</button>
+          `;
       
           const badge = p.submitted
             ? '<span class="badge complete">Completed</span>'
             : '<span class="badge pending">Pending</span>';
           const last  = p.lastTS ? new Date(p.lastTS).toLocaleString() : '—';
       
-          tr.insertCell().textContent = p.pid;               // User
+          // tr.insertCell().textContent = p.pid;               // User
           tr.insertCell().innerHTML   = badge;               // Status
           tr.insertCell().textContent = `${p.answered} / ${p.total}`;
           tr.insertCell().textContent = last;
@@ -932,6 +949,32 @@ Pages.status = {
       });
       
       container.append(progTbl);
+      container.querySelectorAll('.removeUserBtn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const pid = btn.dataset.pid;
+          const dataset = btn.dataset.dataset;
+          if (!confirm(`Remove user ${pid} from dataset ${dataset}?`)) return;
+
+          try {
+            const resp = await fetch('/admin/assign', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prolificID: pid,
+                datasetID: dataset,
+                allow: false  // revoke access
+              })
+            });
+            if (!resp.ok) throw new Error();
+            // on success, remove the row from the table:
+            btn.closest('tr').remove();
+            showToast(`Removed ${pid} from ${dataset}`);
+            setTimeout(() => location.reload(), 300);
+          } catch {
+            alert('Failed to remove user; please try again.');
+          }
+        });
+      });
 
       /* add the whole block after the initial “status” container */
       document.body.appendChild(container);

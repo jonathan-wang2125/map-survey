@@ -114,7 +114,7 @@ def main(ds: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        ds_id = "Test"
+        ds_id = "Military_"
     elif len(sys.argv) != 2:
         sys.exit("usage: delete_dataset.py <dataset-id>")
     else:
