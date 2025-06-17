@@ -13,55 +13,58 @@
     if(!localStorage.getItem('datasetID'))  location.href='select_dataset.html';
   </script>
 
-  <div class="container">
-    <h1>Annotate Questions</h1>
+  <div class="container main-row">
+    <div class="map-column">
 
-    <!--
-    <button id="popOutBtn"      style="margin-right:.5rem">Open full‑screen</button>
-    <button id="pastAnswersBtn">View / Edit Past Answers</button>
-    -->
+      <!--
+      <button id="popOutBtn"      style="margin-right:.5rem">Open full‑screen</button>
+      <button id="pastAnswersBtn">View / Edit Past Answers</button>
+      -->
 
-    <p id="status"></p>
+      <p id="status"></p>
 
-    <div class="map-row">
-      <!-- <div id="locationMapContainer"></div> -->
-      <div id="questionMapContainer"></div>
-    </div>
-
-    <p id="questionText" style="font-weight:600;margin:.8rem 0;"></p>
-
-    <form id="qaForm">
-      <label>Your Answer:
-        <input type="text" id="qAnswer" required>
-      </label>
-
-      <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
-        <input type="number" id="difficulty" min="1" max="5" required>
-      </label>
-
-      <label class="bad-label">
-        <span class="inline-flex">
-          <input type="checkbox" id="badQuestion">
-          Bad Question
-        </span>
-      </label>
-      
-      <label id="badReasonLabel"
-            for="badReason"
-            style="display:none; font-weight:500; margin-bottom:.25rem;">
-        Provide an answer and difficulty assuming the question is fixed
-      </label>
-      <textarea id="badReason"
-                placeholder="Why is it a bad / ambiguous / impossible question?"
-                rows="1" style="width:100%;display:none;margin-top:.5rem;"></textarea>
-      
-      <button type="submit">Submit</button>
-
-      <div class="progress-wrapper">
-        <progress id="saveProgress" value="0" max="1"></progress>
-        <span id="progressText">0 / 0</span>
+      <div class="map-row">
+        <!-- <div id="locationMapContainer"></div> -->
+        <div id="questionMapContainer"></div>
       </div>
-    </form>
+    </div>
+  
+    <div class="question-column">
+      <p id="questionText" style="font-weight:600;margin:.8rem 0;"></p>
+
+      <form id="qaForm">
+        <label>Your Answer:
+          <input type="text" id="qAnswer" required>
+        </label>
+
+        <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
+          <input type="number" id="difficulty" min="1" max="5" required>
+        </label>
+
+        <label class="bad-label">
+          <span class="inline-flex">
+            <input type="checkbox" id="badQuestion">
+            Bad Question
+          </span>
+        </label>
+        
+        <label id="badReasonLabel"
+              for="badReason"
+              style="display:none; font-weight:500; margin-bottom:.25rem;">
+          Provide an answer and difficulty assuming the question is fixed
+        </label>
+        <textarea id="badReason"
+                  placeholder="Why is it a bad / ambiguous / impossible question?"
+                  rows="1" style="width:100%;display:none;margin-top:.5rem;"></textarea>
+        
+        <button type="submit">Submit</button>
+
+        <div class="progress-wrapper">
+          <progress id="saveProgress" value="0" max="1"></progress>
+          <span id="progressText">0 / 0</span>
+        </div>
+      </form>
+    </div>
   </div>
 
   <div id="loader" class="loader" hidden>

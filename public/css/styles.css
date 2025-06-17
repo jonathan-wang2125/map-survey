@@ -74,7 +74,7 @@ form input,form textarea{
   width:100%;aspect-ratio:16 / 9;margin-top:.5rem;
   border:1px solid #ccc;border-radius:4px;overflow:hidden
 }
-.map-row{display:flex;flex-direction:column;gap:1rem;margin-bottom:1rem}
+.map-row{display:flex;flex-direction:column;gap:0;margin-bottom:0}
 
 /* ---------- Past‑answer cards ---------- */
 .answer-card{
@@ -278,4 +278,40 @@ nav.navbar .welcome .nav-user {
   font-size: 1em;
   line-height: 1;
   padding: 4px;
+}
+
+/* make main-row a 2×2 grid: header + two columns */
+.container.main-row {
+  max-width:95%;
+  display: grid;
+  grid-template-columns: 1fr 320px;   /* fluid left, fixed-width right */
+  grid-template-rows: auto 1fr;       /* header height auto, content takes rest */
+  gap: 1rem;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* header spans both columns and is centered */
+.container.main-row > h1 {
+  grid-column: 1 / -1;                /* from first to last column */
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+/* map lives in row 2, col 1 */
+.map-column {
+  grid-column: 1;
+  grid-row: 2;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* questions live in row 2, col 2 */
+.question-column {
+  grid-column: 2;
+  grid-row: 2;
+  overflow-y: auto;
+  padding: 1rem;
+  border-left: 1px solid #ddd;
 }

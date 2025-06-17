@@ -9,9 +9,9 @@ export const annotate = {
 
       /* Cache DOM pointers */
       this.status = document.getElementById('status');
-      this.qTxt   = document.getElementById('questionText');
       this.imgDiv = document.getElementById('questionMapContainer');
       this.mapDiv = document.getElementById('locationMapContainer');
+      this.qTxt   = document.getElementById('questionText');
       this.form   = document.getElementById('qaForm');
 
       this.badBox   = document.getElementById('badQuestion');
@@ -40,7 +40,6 @@ export const annotate = {
       style.textContent = `
         .zoom-container {
           position: relative;
-          display: inline-block;
         }
         .zoom-lens {
           position: absolute;
@@ -216,7 +215,7 @@ export const annotate = {
           hint.style.color      = '#666';
           hint.style.marginTop  = '4px';
           hint.textContent      = 'Tip: press + / – to change zoom level';
-          this.imgDiv.appendChild(hint);
+          this.form.appendChild(hint);
         
           // Add lens inside container
           const lens = document.createElement('div');
@@ -341,7 +340,8 @@ export const annotate = {
           row.innerHTML = `
             <a class="dlBtn" target="_blank" href="${img.src}">Open image</a>
             <a class="dlBtn" download href="${img.src}">Download</a>`;
-          this.imgDiv.appendChild(row);
+          const questionCol = document.querySelector('.question-column');
+          questionCol.appendChild(row);
         }                
     },
 
