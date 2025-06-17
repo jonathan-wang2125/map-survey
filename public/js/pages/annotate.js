@@ -36,6 +36,26 @@ export const annotate = {
         this.badText.required      = on;
       });
 
+      const style = document.createElement('style');
+      style.textContent = `
+        .zoom-container {
+          position: relative;
+          display: inline-block;
+        }
+        .zoom-lens {
+          position: absolute;
+          border: 1px solid #ccc;
+          width: 150px;
+          height: 150px;
+          opacity: 0.0;
+          background-color: white;
+          pointer-events: none;
+          z-index: 1000;
+        }
+      `;
+      document.head.appendChild(style);
+
+
       this.form.addEventListener('submit',e=>this.submit(e));
 
       await this.load();
@@ -176,25 +196,153 @@ export const annotate = {
         ? `<img src="/maps/${encodeURIComponent(q.Map)}" alt="map">`
         : '(no map)';
 
-      if (q.Map){
-        const row=document.createElement('div');
-        row.style='margin:.5rem 0';
-        row.innerHTML=`
-          <a class="dlBtn" target="_blank"
-             href="/maps/${encodeURIComponent(q.Map)}">Open image</a>
-          <a class="dlBtn" download
-             href="/maps/${encodeURIComponent(q.Map)}">Download</a>`;
-        this.imgDiv.append(row);
-      }
+      if (q.Map) {
+          const zoomContainer = document.createElement('div');
+          zoomContainer.className = 'zoom-container';
+        
+          const img = document.createElement('img');
+          img.src = `/maps/${encodeURIComponent(q.Map)}`;
+          img.alt = 'map';
+          img.style.maxWidth = '100%';
+          img.style.display = 'block';
+          img.style.position = 'relative';
+        
+          zoomContainer.appendChild(img);
+          this.imgDiv.innerHTML = '';
+          this.imgDiv.appendChild(zoomContainer);
 
-      /* optional geo markers */
-      // this.mapDiv.innerHTML='';
-      // if (q.locations?.length){
-      //   const m=new google.maps.Map(this.mapDiv,{center:q.locations[0],zoom:8});
-      //   q.locations.forEach(p=>new google.maps.Marker({position:p,map:m}));
-      // }else{
-      //   this.mapDiv.textContent='No locations.';
-      // }
+          const hint = document.createElement('div');
+          hint.style.fontSize   = '12px';
+          hint.style.color      = '#666';
+          hint.style.marginTop  = '4px';
+          hint.textContent      = 'Tip: press + / – to change zoom level';
+          this.imgDiv.appendChild(hint);
+        
+          // Add lens inside container
+          const lens = document.createElement('div');
+          lens.className = 'zoom-lens';
+          lens.style.display = 'none';
+          zoomContainer.appendChild(lens);
+        
+          // 1. change zoomFactor to a let
+          let zoomFactor = 1.5;   // initial 1×
+
+          // Add result globally so it floats with cursor
+          const result = document.createElement('div');
+          result.className = 'zoom-result';
+          result.style.display = 'none';
+          result.style.position = 'fixed';
+          result.style.zIndex = '10000';
+          result.style.width = `${150 * zoomFactor}px`;
+          result.style.height = `${150 * zoomFactor}px`;
+          result.style.border = '1px solid #ccc';
+          result.style.backgroundRepeat = 'no-repeat';
+          result.style.backgroundSize = 'cover';
+          result.style.pointerEvents = 'none';
+          result.style.opacity = '1.0';
+          result.style.position    = 'fixed';
+          result.style.overflow    = 'hidden';   // ensure label never sticks out
+          document.body.appendChild(result);
+
+          // add a label element
+          const zoomLabel = document.createElement('div');
+          zoomLabel.style.position   = 'absolute';
+          zoomLabel.style.bottom     = '4px';
+          zoomLabel.style.right      = '4px';
+          zoomLabel.style.padding    = '2px 4px';
+          zoomLabel.style.fontSize   = '12px';
+          zoomLabel.style.background = 'rgba(0,0,0,0.5)';
+          zoomLabel.style.color      = 'white';
+          zoomLabel.style.borderRadius = '3px';
+          zoomLabel.textContent      = `${zoomFactor.toFixed(1)}×`;
+          result.appendChild(zoomLabel);
+
+          // 2. register a key listener once
+          document.addEventListener('keydown', e => {
+            if (e.key === '+' || e.key === '=') {        // on US keyboards '+' is shift+'='
+              zoomFactor = Math.min(5, zoomFactor + 0.5); // cap at 5×
+            }
+            else if (e.key === '-' || e.key === '_') {
+              zoomFactor = Math.max(0.5, zoomFactor - 0.5); // floor at 0.5×
+            }
+
+            result.style.width = `${150 * zoomFactor}px`;
+            result.style.height = `${150 * zoomFactor}px`;
+            result.style.backgroundSize = `${img.naturalWidth * zoomFactor}px ${img.naturalHeight * zoomFactor}px`;
+            zoomLabel.textContent = `${zoomFactor.toFixed(1)}×`;
+          });
+
+          const keystrokeHint = document.createElement('div');
+          keystrokeHint.style.position   = 'absolute';
+          keystrokeHint.style.top        = '4px';
+          keystrokeHint.style.left       = '4px';
+          keystrokeHint.style.fontSize   = '11px';
+          keystrokeHint.style.color      = 'rgba(0, 0, 0, 0.8)';
+          keystrokeHint.textContent      = '+ / – = zoom';
+          result.appendChild(keystrokeHint);
+        
+          img.onload = () => {
+            const scaleX = img.naturalWidth / img.clientWidth;
+            const scaleY = img.naturalHeight / img.clientHeight;
+        
+            result.style.backgroundImage = `url('${img.src}')`;
+            result.style.backgroundSize = `${img.naturalWidth * zoomFactor}px ${img.naturalHeight * zoomFactor}px`;
+        
+            function getCursorPos(e) {
+              const rect = img.getBoundingClientRect();
+              return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+              };
+            }
+        
+            function moveLens(e) {
+              const pos = getCursorPos(e);
+              let x = pos.x - lens.offsetWidth / 2;
+              let y = pos.y - lens.offsetHeight / 2;
+        
+              // Clamp lens position
+              if (x < 0) x = 0;
+              if (y < 0) y = 0;
+              if (x > img.width - lens.offsetWidth) x = img.width - lens.offsetWidth;
+              if (y > img.height - lens.offsetHeight) y = img.height - lens.offsetHeight;
+
+              lens.style.left = `${x}px`;
+              lens.style.top = `${y}px`;
+        
+              result.style.backgroundPosition = `-${x * scaleX * zoomFactor + 20}px -${y * scaleY * zoomFactor + 20}px`;
+        
+              // Position zoom result next to cursor
+              const offsetX = e.clientX - result.offsetWidth / 2;
+              const offsetY = e.clientY - result.offsetHeight / 2;
+              result.style.left = `${offsetX}px`;
+              result.style.top = `${offsetY}px`;
+            }
+        
+            // Show zoom
+            zoomContainer.addEventListener('mouseenter', () => {
+              lens.style.display = 'block';
+              result.style.display = 'block';
+            });
+        
+            zoomContainer.addEventListener('mouseleave', () => {
+              lens.style.display = 'none';
+              result.style.display = 'none';
+            });
+        
+            zoomContainer.addEventListener('mousemove', moveLens);
+            lens.addEventListener('mousemove', moveLens);
+            img.addEventListener('mousemove', moveLens);
+          };
+        
+          // Download/Open buttons
+          const row = document.createElement('div');
+          row.style = 'margin:.5rem 0';
+          row.innerHTML = `
+            <a class="dlBtn" target="_blank" href="${img.src}">Open image</a>
+            <a class="dlBtn" download href="${img.src}">Download</a>`;
+          this.imgDiv.appendChild(row);
+        }                
     },
 
     scrollAfterImage () {
