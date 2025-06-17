@@ -13,6 +13,13 @@ export const annotate = {
       this.mapDiv = document.getElementById('locationMapContainer');
       this.qTxt   = document.getElementById('questionText');
       this.form   = document.getElementById('qaForm');
+      
+          const hint = document.createElement('div');
+          hint.style.fontSize   = '12px';
+          hint.style.color      = '#666';
+          hint.style.marginTop  = '4px';
+          hint.textContent      = 'Tip: press + / – to change zoom level';
+          this.form.appendChild(hint);
 
       this.badBox   = document.getElementById('badQuestion');
       this.badText  = document.getElementById('badReason');
@@ -209,13 +216,6 @@ export const annotate = {
           zoomContainer.appendChild(img);
           this.imgDiv.innerHTML = '';
           this.imgDiv.appendChild(zoomContainer);
-
-          const hint = document.createElement('div');
-          hint.style.fontSize   = '12px';
-          hint.style.color      = '#666';
-          hint.style.marginTop  = '4px';
-          hint.textContent      = 'Tip: press + / – to change zoom level';
-          this.form.appendChild(hint);
         
           // Add lens inside container
           const lens = document.createElement('div');
@@ -340,8 +340,9 @@ export const annotate = {
           row.innerHTML = `
             <a class="dlBtn" target="_blank" href="${img.src}">Open image</a>
             <a class="dlBtn" download href="${img.src}">Download</a>`;
-          const questionCol = document.querySelector('.question-column');
-          questionCol.appendChild(row);
+           document.getElementById('downloadRow')?.remove();
+            row.id = 'downloadRow';
+            document.querySelector('.question-column').appendChild(row);
         }                
     },
 
@@ -381,7 +382,7 @@ export const annotate = {
         badQuestion:   this.badBox.checked,
         badReason:     this.badBox.checked ? this.badText.value : ''
       };
-    
+      
       const resp = await fetch('/submit_question', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
