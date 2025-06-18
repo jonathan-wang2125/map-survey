@@ -126,18 +126,25 @@ export const past = {
           <label class="bad-label">
             <span class="inline-flex">
               <input type="checkbox" ${r.badQuestion ? 'checked' : ''}>
-              Bad&nbsp;Question
+              Question needs rephrasing
             </span>
           </label>
 
           <label id="badReasonLabel"
                 for="badReason"
                 style="display:none; font-weight:500; margin-bottom:.25rem;${r.badQuestion ? '' : 'display:none;'}">
-            Provide an answer and difficulty assuming the question is fixed
+            Provide an answer and difficulty assuming the question is rephrased
           </label>
           <textarea rows="1"
-                    placeholder="Why is it bad / ambiguous / impossible?"
+                    placeholder="Rephrase the question so the answer provided is valid."
                     style="width:100%;margin-top:.4rem;resize:vertical;${r.badQuestion ? '' : 'display:none;'}">${r.badReason ?? ''}</textarea>
+
+          <label class="bad-label">
+            <span class="inline-flex">
+              <input type="checkbox" id="discardQuestion">
+              Discard question
+            </span>
+          </label>
 
           <div style="margin-top:.4rem;">
             <button class="editBtn">Edit</button>
@@ -155,16 +162,17 @@ export const past = {
         const ansIn   = card.querySelector('input[type=text]');
         const diffIn  = card.querySelector('input[type=number]');
         const badBox  = card.querySelector('input[type=checkbox]');
+        const discardBox = card.querySelector('#discardQuestion');
         const reason  = card.querySelector('textarea');
         const editBt  = card.querySelector('.editBtn');
         const mapBt   = card.querySelector('.mapBtn');
 
         /* read-only by default */
-        [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = true));
+        [ansIn, diffIn, badBox, reason, discardBox].forEach(el => (el.disabled = true));
 
         // Disable everything if the dataset has already been submitted
         if (submitted) {
-          [ansIn, diffIn, badBox, reason, editBt].forEach(el => el.disabled = true);
+          [ansIn, diffIn, badBox, reason, editBt, discardBox].forEach(el => el.disabled = true);
         } else {
           /* show/hide textarea with checkbox */
           badBox.addEventListener('change', () => {
@@ -175,7 +183,7 @@ export const past = {
           editBt.addEventListener('click', async () => {
             const editing = ansIn.disabled;
             const setDis  = !editing;
-            [ansIn, diffIn, badBox, reason].forEach(el => (el.disabled = setDis));
+            [ansIn, diffIn, badBox, reason, discardBox].forEach(el => (el.disabled = setDis));
             editBt.textContent = editing ? 'Save' : 'Edit';
 
             if (!editing) { // now saving
@@ -187,7 +195,8 @@ export const past = {
                   answer:      ansIn.value,
                   difficulty:  diffIn.value,
                   badQuestion: badBox.checked,
-                  badReason:   reason.value
+                  badReason:   reason.value,
+                  discard:      discardBox.checked
                 })
               });
             }

@@ -12,21 +12,13 @@
     if(!localStorage.getItem('datasetID'))  location.href='select_dataset.html';
   </script>
 
-  <nav class="navbar">
-    <div class="brand"><a href="select_dataset.html">Map‑Survey</a></div>
-    <div class="nav-links">
-      <a href="select_dataset.html">Home</a>
-      <a href="instructions.html">Instructions</a>
-      <a id="logoutBtn" href="#">Log out</a>
-    </div>
-  </nav>
-
   <div class="container">
     <h1>Your Past Answers</h1>
     <div id="answersList"></div>
     <button onclick="history.back()">← Back</button>
   </div>
 
+  <script src="/js/loadNavbar.js" defer></script>
   <script type="module" src="/js/main.js" defer></script>
 </body>
 </html>
