@@ -21,6 +21,7 @@ export const annotate = {
           hint.textContent      = 'Tip: press + / – to change zoom level';
           this.form.appendChild(hint);
 
+      this.discardBox = document.getElementById('discardQuestion');     
       this.badBox   = document.getElementById('badQuestion');
       this.badText  = document.getElementById('badReason');
       this.badLabel = document.getElementById('badReasonLabel');
@@ -380,7 +381,8 @@ export const annotate = {
         answer:        document.getElementById('qAnswer').value,
         difficulty:    document.getElementById('difficulty').value,
         badQuestion:   this.badBox.checked,
-        badReason:     this.badBox.checked ? this.badText.value : ''
+        badReason:     this.badBox.checked ? this.badText.value : '',
+        discard:       this.discardBox.checked
       };
       
       const resp = await fetch('/submit_question', {
