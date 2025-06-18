@@ -292,12 +292,12 @@ export const annotate = {
               zoomFactor = Math.min(5, zoomFactor + 0.5); // cap at 5×
             }
             else if (e.key === '-' || e.key === '_') {
-              zoomFactor = Math.max(0.5, zoomFactor - 0.5); // floor at 0.5×
+              zoomFactor = Math.max(1.0, zoomFactor - 0.5); // floor at 0.5×
             }
 
             result.style.width = `${150 * zoomFactor}px`;
             result.style.height = `${150 * zoomFactor}px`;
-            result.style.backgroundSize = `${img.naturalWidth * zoomFactor}px ${img.naturalHeight * zoomFactor}px`;
+            result.style.backgroundSize = `${img.clientWidth * zoomFactor}px ${img.clientHeight * zoomFactor}px`;
             zoomLabel.textContent = `${zoomFactor.toFixed(1)}×`;
           });
 
@@ -311,11 +311,10 @@ export const annotate = {
           result.appendChild(keystrokeHint);
         
           img.onload = () => {
-            const scaleX = img.naturalWidth / img.clientWidth;
-            const scaleY = img.naturalHeight / img.clientHeight;
+            console.log(img.naturalWidth, img.clientWidth)
         
             result.style.backgroundImage = `url('${img.src}')`;
-            result.style.backgroundSize = `${img.naturalWidth * zoomFactor}px ${img.naturalHeight * zoomFactor}px`;
+            result.style.backgroundSize = `${img.clientWidth * zoomFactor}px ${img.clientHeight * zoomFactor}px`;
         
             function getCursorPos(e) {
               const rect = img.getBoundingClientRect();
@@ -339,7 +338,7 @@ export const annotate = {
               lens.style.left = `${x}px`;
               lens.style.top = `${y}px`;
         
-              result.style.backgroundPosition = `-${x * scaleX * zoomFactor + 20}px -${y * scaleY * zoomFactor + 20}px`;
+              result.style.backgroundPosition = `-${x * zoomFactor}px -${y * zoomFactor}px`;
         
               // Position zoom result next to cursor
               const offsetX = e.clientX - result.offsetWidth / 2;
