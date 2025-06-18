@@ -544,6 +544,9 @@ app.post('/submit_question', async (req, res) => {
       difficulty: req.body.difficulty,
       badQuestion: req.body.badQuestion ?? false,
       badReason: req.body.badReason ?? '',
+      discard: req.body.discard,
+      startTime: req.body.startTime,
+      stopTime: req.body.stopTime,
       origTimestamp: Date.now()
     })
   );
@@ -649,7 +652,7 @@ app.get('/qresponses/:pid', async (req, res) => {
 /* edit an existing answer */
 app.post('/edit_qresponse/:pid', async (req, res) => {
   const { pid } = req.params;
-  const { dataset, uid, answer, difficulty, badQuestion, badReason } = req.body;
+  const { dataset, uid, answer, difficulty, badQuestion, badReason, discard } = req.body;
   const key = v1AnswerKey(pid, dataset, uid);
   const str = await redis.get(key);
   if (!str) return res.status(404).json({ error: 'not found' });
@@ -662,6 +665,7 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
   obj.difficulty = difficulty;
   obj.badQuestion = !!badQuestion;
   obj.badReason = badQuestion ? (badReason || '') : '';
+  obj.discard = !!discard;
   obj.editTimestamp = Date.now();
   await redis.set(key, JSON.stringify(obj));
   res.json({ success: true });

@@ -97,6 +97,16 @@ export const past = {
         // IMPORTANT: set data-eval so the filter can read it
         card.setAttribute('data-eval', r.llm_eval);
 
+        let elapsedMs = r.stopTime - r.startTime;
+        let mins, secs;
+
+        if (isNaN(elapsedMs) || elapsedMs < 0) {
+          mins = secs = '--';
+        } else {
+          secs = String(Math.floor(elapsedMs / 1000) % 60).padStart(2, '0');
+          mins = Math.floor(elapsedMs / 60000);
+        }
+
         /* -------- inner HTML -------- */
         card.innerHTML = `
           <p><strong>Q:</strong> ${r.question}</p>
@@ -119,9 +129,13 @@ export const past = {
 
           <br>
 
+          <!--
           <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
             <input type="number" min="1" max="10" value="${r.difficulty ?? ''}">
           </label>
+          -->
+
+          <label>Time on question: ${mins}m ${secs.toString().padStart(2,'0')}s</label>
 
           <label class="bad-label">
             <span class="inline-flex">
@@ -141,7 +155,7 @@ export const past = {
 
           <label class="bad-label">
             <span class="inline-flex">
-              <input type="checkbox" id="discardQuestion">
+              <input type="checkbox" id="discardQuestion" ${r.discard ? 'checked' : ''}>
               Discard question
             </span>
           </label>
@@ -160,7 +174,7 @@ export const past = {
 
         /* -------- grab elements -------- */
         const ansIn   = card.querySelector('input[type=text]');
-        const diffIn  = card.querySelector('input[type=number]');
+        // const diffIn  = card.querySelector('input[type=number]');
         const badBox  = card.querySelector('input[type=checkbox]');
         const discardBox = card.querySelector('#discardQuestion');
         const reason  = card.querySelector('textarea');
@@ -168,11 +182,11 @@ export const past = {
         const mapBt   = card.querySelector('.mapBtn');
 
         /* read-only by default */
-        [ansIn, diffIn, badBox, reason, discardBox].forEach(el => (el.disabled = true));
+        [ansIn, badBox, reason, discardBox].forEach(el => (el.disabled = true));
 
         // Disable everything if the dataset has already been submitted
         if (submitted) {
-          [ansIn, diffIn, badBox, reason, editBt, discardBox].forEach(el => el.disabled = true);
+          [ansIn, badBox, reason, editBt, discardBox].forEach(el => el.disabled = true);
         } else {
           /* show/hide textarea with checkbox */
           badBox.addEventListener('change', () => {
@@ -183,7 +197,7 @@ export const past = {
           editBt.addEventListener('click', async () => {
             const editing = ansIn.disabled;
             const setDis  = !editing;
-            [ansIn, diffIn, badBox, reason, discardBox].forEach(el => (el.disabled = setDis));
+            [ansIn, badBox, reason, discardBox].forEach(el => (el.disabled = setDis));
             editBt.textContent = editing ? 'Save' : 'Edit';
 
             if (!editing) { // now saving
@@ -193,7 +207,7 @@ export const past = {
                   dataset:     Common.ds(),
                   uid:         r.uid,
                   answer:      ansIn.value,
-                  difficulty:  diffIn.value,
+                  difficulty:  0,
                   badQuestion: badBox.checked,
                   badReason:   reason.value,
                   discard:      discardBox.checked

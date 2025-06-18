@@ -37,9 +37,9 @@
           <input type="text" id="qAnswer" required>
         </label>
 
-        <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
+        <!-- <label>Difficulty (1 = Very Easy, 5 = Very Difficult):
           <input type="number" id="difficulty" min="1" max="5" required>
-        </label>
+        </label> -->
 
         <label class="bad-label">
           <span class="inline-flex">
@@ -51,7 +51,7 @@
         <label id="badReasonLabel"
               for="badReason"
               style="display:none; font-weight:500; margin-bottom:.25rem;">
-          Provide an answer and difficulty assuming the question is fixed
+          Provide an answer and difficulty assuming the question is rephrased
         </label>
         <textarea id="badReason"
                   placeholder="Rephrase the question so the answer provided is valid."
@@ -64,6 +64,8 @@
             Discard question
           </span>
         </label>
+
+        <br>
 
 
         <button type="submit">Submit</button>

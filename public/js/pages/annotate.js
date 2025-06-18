@@ -2,6 +2,15 @@ import { Common } from '../common/common.js';
 
 export const annotate = {
     current:null,
+    annotateStart: null,
+    annotateStop: null,
+
+    _clearTimer(){
+      if (this._timerInterval){
+        clearInterval(this._timerInterval);
+        this._timerInterval = null;
+      }
+    },
 
     async init(){
       Common.ensureLogin(); Common.initNavbar();
@@ -64,6 +73,14 @@ export const annotate = {
 
 
       this.form.addEventListener('submit',e=>this.submit(e));
+
+      this.timerDisplay = document.createElement('div');
+      this.timerDisplay.id = 'annotation-timer';
+      this.timerDisplay.style.fontSize = '12px';
+      this.timerDisplay.style.color = '#333';
+      this.timerDisplay.style.marginBottom = '4px';
+      this.timerDisplay.textContent = 'Time on question: 0m 00s';
+      this.form.insertBefore(this.timerDisplay, this.form.firstChild);
 
       await this.load();
 
@@ -174,8 +191,20 @@ export const annotate = {
       this.badLabel.style.display = 'none';
       this.badText.required    = false;
 
+      this.annotateStart = Date.now();
+      this._clearTimer();               // in case it was running
+      this._timerInterval = setInterval(
+        () => {
+          const elapsedMs = Date.now() - this.annotateStart;
+          const secs = Math.floor(elapsedMs / 1000) % 60;
+          const mins = Math.floor(elapsedMs / 60000);
+          this.timerDisplay.textContent =
+            `Time on question: ${mins}m ${secs.toString().padStart(2,'0')}s`;
+        },
+        1000
+      );
+    
       this.render();
-
       this.status.textContent = '';
     },
 
@@ -370,6 +399,9 @@ export const annotate = {
     
       /* disable form while saving */
       this.form.querySelector('button[type=submit]').disabled = true;
+
+      this.annotateStop = Date.now();
+      this._clearTimer();
     
       const q = this.current.question;
       const payload = {
@@ -379,10 +411,12 @@ export const annotate = {
         uid:           q.uid,
         question:      q.Question,
         answer:        document.getElementById('qAnswer').value,
-        difficulty:    document.getElementById('difficulty').value,
+        difficulty:    0, //document.getElementById('difficulty').value,
         badQuestion:   this.badBox.checked,
         badReason:     this.badBox.checked ? this.badText.value : '',
-        discard:       this.discardBox.checked
+        discard:       this.discardBox.checked,
+        startTime:     this.annotateStart,
+        stopTime:      this.annotateStop
       };
       
       const resp = await fetch('/submit_question', {
@@ -403,7 +437,7 @@ export const annotate = {
     
       /* clear form & load next question (no alert) */
       this.form.reset();
-      await this.load();
+      const timestart = await this.load();
 
       this.scrollAfterImage();
     }

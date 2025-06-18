@@ -104,7 +104,10 @@ a.dlBtn:hover{background:#005599}
 }
 
 /* keep label + checkbox on one line */
-.bad-label { display:block; margin-bottom:1rem; }
+.bad-label { 
+  display:block; 
+  margin-bottom:0rem;
+}
 
 /* checkbox + text stay on one line */
 .bad-label .inline-flex{
