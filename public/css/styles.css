@@ -24,6 +24,7 @@ nav.navbar .nav-links a:hover{background:rgba(255,255,255,.1)}
   max-width:85%;
   margin:1rem auto 3rem;
   padding:1rem;
+  position: relative; 
 
   background:#fff;        /* lighter panel on darker page */
   border-radius:6px;       /* softer card edges (optional) */
@@ -547,4 +548,39 @@ nav.navbar .welcome .nav-user {
 }
 .zoom-btn.active {
   opacity: 1;
+}
+
+
+/* layout for the grid of cards */
+.dataset-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  row-gap:    1rem;
+  column-gap: 1rem;
+}
+
+
+/* style the toggle button */
+.container > button {
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.expand-toggle {
+  position: absolute;   /* ← NEW! */
+  top: 0.5rem;          /* adjust as you like */
+  right: 0.5rem;        /* adjust as you like */
+  z-index: 10;          /* sit above other content */
+  background: #006699;     /* optional: contrast bg */
+  border: 1px solid #ffffff;
+  padding: 0.25em 0.5em;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.sort-toggle {
+  padding: 0.3em 0.6em;
+  font-size: 0.9rem;
+  min-width: 6em;
+  line-height: 1.2;
 }

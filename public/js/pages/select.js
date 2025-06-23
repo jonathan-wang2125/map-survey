@@ -26,8 +26,14 @@ export const select = {
       // 3) for each topic, create a standalone container
       for (const [topic, list] of Object.entries(byTopic)) {
         // a) container div under <body>
+        list.reverse();
         const container = document.createElement('div');
+        container.style.position = 'relative';
         container.classList.add('container');
+
+        const cardsHolder = document.createElement('div');
+        cardsHolder.classList.add('dataset-buttons');
+        container.append(cardsHolder);
   
         // b) topic title
         const h2 = document.createElement('h2');
@@ -45,6 +51,7 @@ export const select = {
           const { submitted } = await fetch(
             `/dataset_submission/${pid}/${ds.id}`
           ).then(r => r.json());
+          
   
           // card element
           const card = document.createElement('div');
@@ -96,9 +103,49 @@ export const select = {
   
           buttonsDiv.append(card);
         }
-  
-        // e) append this topic container to the document body
-        document.body.append(container);
+
+      // …after you’ve built buttonsDiv and all the cards…
+
+// 1) EXPAND/COLLAPSE TOGGLE
+const toggle = document.createElement('button');
+toggle.classList.add('expand-toggle');
+toggle.textContent = 'v';              // open state
+toggle.style.position = 'absolute';
+toggle.style.top      = '0.5em';
+toggle.style.right    = '0.5em';
+
+let expanded = true;
+toggle.onclick = () => {
+  expanded = !expanded;
+  buttonsDiv.style.display = expanded ? 'grid' : 'none';
+  toggle.textContent      = expanded ? 'v'    : '>';
+};
+
+// 2) REVERSE-SORT BUTTON
+const sortBtn = document.createElement('button');
+sortBtn.classList.add('sort-toggle');
+sortBtn.textContent = 'Oldest → Newest';
+sortBtn.style.position = 'absolute';
+sortBtn.style.top      = '0.5em';
+sortBtn.style.right    = '2.5em';   // sits just left of the toggle
+
+
+let reversed = true;
+sortBtn.onclick = () => {
+  const cards = Array.from(buttonsDiv.querySelectorAll('.dataset-card'));
+  buttonsDiv.innerHTML = '';
+  cards.reverse().forEach(c => buttonsDiv.appendChild(c));
+  reversed = !reversed;
+  sortBtn.textContent = reversed 
+    ? 'Newest → Oldest'
+    : 'Oldest → Newest';
+};
+
+// 3) APPEND ONCE
+container.append(sortBtn, toggle);
+        
+              // e) append this topic container to the document body
+              document.body.append(container);
+            }
+          }
       }
-    }
-}
