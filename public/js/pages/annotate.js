@@ -12,7 +12,28 @@ export const annotate = {
       }
     },
 
-    async init(){
+async _loadLeaflet() {
+   // 1) inject CSS (via jsDelivr)
+  const leafletCss = document.createElement('link');
+  leafletCss.rel  = 'stylesheet';
+  leafletCss.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(leafletCss);
+
+  // 2) inject JS and wait for it to load
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src         = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+    s.onload      = resolve;
+    s.onerror     = reject;
+    document.head.appendChild(s);
+  });
+},
+
+    async init(){ 
+     await this._loadLeaflet();
+  Common.ensureLogin();
+  Common.initNavbar();
+     
       Common.ensureLogin(); Common.initNavbar();
       if (!Common.ds()) location.href='/select_dataset.html';
 
@@ -66,13 +87,15 @@ export const annotate = {
           opacity: 0.0;
           background-color: white;
           pointer-events: none;
-          z-index: 1000;
+          z-index: 8400;
         }
       `;
       document.head.appendChild(style);
-
-
+    style.textContent += `
+    .maps-btn { opacity: 0.5; transition: opacity 0.2s ease; }
+    .maps-btn.active { opacity: 1; }
       this.form.addEventListener('submit',e=>this.submit(e));
+      `;
 
       this.timerDisplay = document.createElement('div');
       this.timerDisplay.id = 'annotation-timer';
@@ -223,6 +246,8 @@ export const annotate = {
     },
 
     render(){
+      let lastMapEvent = null;
+      
       const q=this.current.question;
 
       this.qTxt.textContent = q.Question || '(no text)';
@@ -252,7 +277,7 @@ export const annotate = {
           lens.className = 'zoom-lens';
           lens.style.display = 'none';
           zoomContainer.appendChild(lens);
-        
+          
           // 1. change zoomFactor to a let
           let zoomFactor = 1.5;   // initial 1×
 
@@ -261,7 +286,7 @@ export const annotate = {
           result.className = 'zoom-result';
           result.style.display = 'none';
           result.style.position = 'fixed';
-          result.style.zIndex = '10000';
+          result.style.zIndex = '8000';
           result.style.width = `${150 * zoomFactor}px`;
           result.style.height = `${150 * zoomFactor}px`;
           result.style.border = '1px solid #ccc';
@@ -272,6 +297,282 @@ export const annotate = {
           result.style.position    = 'fixed';
           result.style.overflow    = 'hidden';   // ensure label never sticks out
           document.body.appendChild(result);
+
+            function getCursorPos(e) {
+              const rect = img.getBoundingClientRect();
+              return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+              };
+            }
+
+        // move the lens & update the zoom pane
+        function moveLens(e) {
+          lastMapEvent = e;
+          const pos = getCursorPos(e);
+          let x = pos.x - lens.offsetWidth  / 2;
+          let y = pos.y - lens.offsetHeight / 2;
+
+          x = Math.max(0, Math.min(img.width - lens.offsetWidth, x));
+          y = Math.max(0, Math.min(img.height - lens.offsetHeight, y));
+
+          lens.style.left = `${x}px`;
+          lens.style.top  = `${y}px`;
+          result.style.backgroundPosition = `-${x * zoomFactor}px -${y * zoomFactor}px`;
+
+          // center the result pane on the cursor
+          const offsetX = e.clientX - result.offsetWidth  / 2;
+          const offsetY = e.clientY - result.offsetHeight / 2;
+          result.style.left = `${offsetX}px`;
+          result.style.top  = `${offsetY}px`;
+        }
+
+
+
+           // ────────── WIDGET + ZOOM-TOGGLE SNIPPET ──────────
+    // (all changes for the moveable toggle widget live between these borders)
+
+    // 1) Toggle state
+    let zoomEnabled = false;
+  
+    // 2) Draggable widget container
+    const widget = document.createElement('div');
+    widget.classList.add('zoom-widget');
+
+    const img_rect = this.imgDiv.getBoundingClientRect();
+
+    // anchor the widget in the top-right of the zoomContainer by default
+    widget.style.position = 'absolute';
+    widget.style.top      = `${img_rect.top}px`;
+    widget.style.left    = `${img_rect.left + 10}px`;
+    widget.style.zIndex   = '9000';
+
+
+    document.body.appendChild(widget);
+
+    // ── add the little drag handle ──
+const handle = document.createElement('div');
+handle.className = 'zoom-handle';
+for (let i = 0; i < 3; i++) {
+  const dot = document.createElement('span');
+  handle.appendChild(dot);
+}
+widget.appendChild(handle);
+
+        // ─── WIDGET HOVER HIDES ZOOM ─────────────────────
+    widget.addEventListener('mouseenter', () => {
+      // whenever the cursor goes over the widget, hide any zoom UI
+      lens.style.display   = 'none';
+      result.style.display = 'none';
+    });
+
+    widget.addEventListener('mouseleave', () => {
+      if (!zoomEnabled || !lastMapEvent) return;
+      lens.style.display   = 'block';
+      result.style.display = 'block';
+      moveLens(lastMapEvent);
+      });
+
+    // ─── END WIDGET HOVER PATCH ─────────────────────
+
+        // 3) Magnifier button
+const zoomBtn = document.createElement('button');
+zoomBtn.textContent = '🔍';
+zoomBtn.title = 'Toggle zoom';
+zoomBtn.classList.add('zoom-btn');
+widget.appendChild(zoomBtn);
+
+// add divider 
+const divider = document.createElement('div');
+divider.classList.add('zoom-widget-divider');
+widget.appendChild(divider);
+
+zoomBtn.addEventListener('click', () => {
+  // flip the flag
+  zoomEnabled = !zoomEnabled;
+  // dim the button when zoom is off
+  zoomBtn.classList.toggle('active', zoomEnabled);
+
+  if (!zoomEnabled) {
+    // hide everything when turned off
+    lens.style.display = 'none';
+    result.style.display = 'none';
+  } else {
+    // if turning back on and we've got a last position, redisplay at that spot
+    if (lastMapEvent) {
+      moveLens(lastMapEvent);
+      lens.style.display = 'block';
+      result.style.display = 'block';
+      }}}); 
+    // ─── end addition ─────────────────────────────────────────────────────
+
+        const mapsBtn = document.createElement('button');
+    mapsBtn.classList.add('maps-btn');
+    mapsBtn.title = 'Open Google Maps';
+    mapsBtn.style.border = 'none';
+    mapsBtn.style.background = 'transparent';
+    mapsBtn.style.padding = '0';
+    mapsBtn.classList.add('maps-btn');
+    mapsBtn.innerHTML = `
+  <img src="assets/map.png" 
+    alt="Open map" style="width:28px; height:28px; display:block;">`;
+    widget.appendChild(mapsBtn);
+    
+
+    mapsBtn.addEventListener('click', async () => {
+     
+      const opening = !document.querySelector('.gm-panel');
+     
+      // if exsisting then delete window
+      const existing = document.querySelector('.gm-panel');
+  if (existing) {
+    existing.remove();
+    mapsBtn.classList.remove('active');
+    return;
+  }
+      
+const { bottom } = widget.getBoundingClientRect();
+const containerRect = zoomContainer.getBoundingClientRect();
+const panelLeft = containerRect.left;
+
+  // 1) build panel
+ const panel = document.createElement('div');
+  panel.className = 'gm-panel';
+  const PANEL_WIDTH = 300;
+  Object.assign(panel.style, {
+    position:   'absolute',
+    top:  `${bottom}px`,       // same vertical placement
+    left: `${panelLeft}px`,    // always flush to left edge of image
+    width:      `${PANEL_WIDTH}px`,
+    background: '#fff',
+    border:     '1px solid #ccc',
+    padding:    '8px',
+    zIndex:     8500,        // above the widget
+    boxShadow:  '0 2px 6px rgba(0,0,0,0.2)'
+  });
+
+
+
+  // 2) floating pill-shaped search bar
+const searchForm = document.createElement('form');
+searchForm.classList.add('gm-search-wrapper');
+
+const input = document.createElement('input');
+input.type = 'text';
+input.placeholder = 'Search places…';
+
+const go = document.createElement('button');
+go.type = 'submit';
+go.innerHTML = `
+  <img src="assets/search_icon.png" 
+  alt="Search" style="width:24px; height:24px; display:block;">`;
+
+searchForm.append(input, go);
+panel.appendChild(searchForm);
+
+  // 3) map container
+  const mapDiv = document.createElement('div');
+  mapDiv.id = 'osm-map';
+  Object.assign(mapDiv.style, { width: '100%', height: '300px' });
+  panel.appendChild(mapDiv);
+
+  widget.appendChild(panel);
+  
+
+  // 4) init Leaflet map 
+const map = L.map(mapDiv, { zoomControl: false }).setView([0, 0], 2);
+
+// add tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+  let marker = null;
+  // 5) geocode & recenter via Nominatim
+  searchForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`,
+      { headers: { 'Accept-Language': 'en' } }
+    );
+    const hits = await res.json();
+    if (!hits.length) return;
+    const { lat, lon } = hits[0];
+    map.setView([+lat, +lon], 12);
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([+lat, +lon]).addTo(map);
+  });
+
+  // 6) finally insert
+document.body.appendChild(panel);
+mapsBtn.classList.add('active');
+
+
+ // ── make panel draggable ──
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  panel.addEventListener('mousedown', e => {
+    dragOffsetX = e.clientX - panel.offsetLeft;
+    dragOffsetY = e.clientY - panel.offsetTop;
+    document.body.style.userSelect = 'none';
+    if (e.target.closest('#osm-map')) return;
+    isDragging = true;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    panel.style.left = (e.clientX - dragOffsetX) + 'px';
+    panel.style.top  = (e.clientY - dragOffsetY) + 'px';
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    document.body.style.userSelect = '';
+  });
+
+});
+
+    // make the widget draggable
+let dragging = false;
+let offsetX = 0, offsetY = 0;
+let parentRect = null;
+
+widget.addEventListener('mousedown', e => {
+  if (e.target.closest('.gm-panel')) return;
+  parentRect = widget.parentElement.getBoundingClientRect();
+  const wRect = widget.getBoundingClientRect();
+  offsetX = e.clientX - wRect.left;
+  offsetY = e.clientY - wRect.top;
+  dragging = true;
+  widget.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+   if (!dragging) return;
+
+  const parentRect = widget.parentElement.getBoundingClientRect();
+  let x = e.clientX - parentRect.left - offsetX;
+  let y = e.clientY - parentRect.top  - offsetY;
+
+  // clamp removed — widget can now move anywhere
+  widget.style.left = `${x}px`;
+  widget.style.top  = `${y}px`;
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragging) return;
+  dragging = false;
+  widget.style.cursor = 'grab';
+});
+
+
+    // ──────── END WIDGET + ZOOM-TOGGLE SNIPPET ─────────
 
           // add a label element
           const zoomLabel = document.createElement('div');
@@ -311,56 +612,27 @@ export const annotate = {
           result.appendChild(keystrokeHint);
         
           img.onload = () => {
-            console.log(img.naturalWidth, img.clientWidth)
-        
             result.style.backgroundImage = `url('${img.src}')`;
             result.style.backgroundSize = `${img.clientWidth * zoomFactor}px ${img.clientHeight * zoomFactor}px`;
         
-            function getCursorPos(e) {
-              const rect = img.getBoundingClientRect();
-              return {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-              };
-            }
+           
         
-            function moveLens(e) {
-              const pos = getCursorPos(e);
-              let x = pos.x - lens.offsetWidth / 2;
-              let y = pos.y - lens.offsetHeight / 2;
-        
-              // Clamp lens position
-              if (x < 0) x = 0;
-              if (y < 0) y = 0;
-              if (x > img.width - lens.offsetWidth) x = img.width - lens.offsetWidth;
-              if (y > img.height - lens.offsetHeight) y = img.height - lens.offsetHeight;
-
-              lens.style.left = `${x}px`;
-              lens.style.top = `${y}px`;
-        
-              result.style.backgroundPosition = `-${x * zoomFactor}px -${y * zoomFactor}px`;
-        
-              // Position zoom result next to cursor
-              const offsetX = e.clientX - result.offsetWidth / 2;
-              const offsetY = e.clientY - result.offsetHeight / 2;
-              result.style.left = `${offsetX}px`;
-              result.style.top = `${offsetY}px`;
-            }
-        
-            // Show zoom
-            zoomContainer.addEventListener('mouseenter', () => {
-              lens.style.display = 'block';
-              result.style.display = 'block';
-            });
-        
-            zoomContainer.addEventListener('mouseleave', () => {
-              lens.style.display = 'none';
-              result.style.display = 'none';
-            });
-        
-            zoomContainer.addEventListener('mousemove', moveLens);
-            lens.addEventListener('mousemove', moveLens);
-            img.addEventListener('mousemove', moveLens);
+              // ─── GATED ZOOM HANDLERS ─────────────────────────────────
+              zoomContainer.addEventListener('mouseenter', () => {
+                if (!zoomEnabled) return;
+                lens.style.display   = 'block';
+                result.style.display = 'block';
+              });
+              zoomContainer.addEventListener('mouseleave', () => {
+                lens.style.display   = 'none';
+                result.style.display = 'none';
+              });
+              zoomContainer.addEventListener('mousemove', e => {
+                if (zoomEnabled) moveLens(e);
+              });
+              lens.addEventListener  ('mousemove', e => { if (zoomEnabled) moveLens(e); });
+              img.addEventListener   ('mousemove', e => { if (zoomEnabled) moveLens(e); });
+              // ─── END GATED HANDLERS ──────────────────────────────────
           };
         
           // Download/Open buttons
@@ -376,17 +648,13 @@ export const annotate = {
     },
 
     scrollAfterImage () {
-      const img = document.querySelector('#questionMapContainer img');
-    
-      const doScroll = () =>
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' });
-    
-      if (img && !img.complete) {         // wait if still loading
-        img.addEventListener('load', doScroll, { once: true });
-      } else {
-        doScroll();                       // image was cached / instant
-      }
-    },
+         // grab the scrollable question pane
+  const qCol = document.querySelector('.question-column');
+  if (qCol) {
+    // jump back to its top
+    qCol.scrollTo({ top: 0, behavior: 'auto' });
+  }
+},
 
     async submit (e) {
       e.preventDefault();

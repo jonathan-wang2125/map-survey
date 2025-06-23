@@ -9,7 +9,7 @@ nav.navbar{
   position:fixed;top:0;left:0;right:0;height:60px;
   background:#004466;color:#fff;display:flex;
   align-items:center;justify-content:space-between;padding:0 1rem;
-  z-index:1000;
+  z-index:10000;
   cursor: default;
   user-select: none;
 }
@@ -317,4 +317,234 @@ nav.navbar .welcome .nav-user {
   overflow-y: auto;
   padding: 1rem;
   border-left: 1px solid #ddd;
+}
+
+/* ── pill-shaped zoom widget with two semicircles on each end ── */
+.zoom-widget {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 999px;      /* makes it a perfect pill */
+  cursor: move;
+  z-index: 8400;
+  gap: 0.75rem;           /* or 1rem if you want even more space */
+  padding: 0.5rem 1rem;
+}
+
+.zoom-widget button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+
+/* the thin vertical line */
+.zoom-widget-divider {
+  width: 1px;
+  background-color: rgba(0,0,0,0.2);
+  align-self: stretch;    /* makes it as tall as the widget */
+}
+
+
+
+/* float the search pill inside */
+.gm-panel .gm-search-wrapper {
+  position: absolute;
+  top: 12px;          /* drop it a bit from the very top edge */
+  right: 12px;        /* inset from the right edge */
+  left: auto;         /* disable centering hack */
+  transform: none;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  padding: 6px 12px;  /* a little more breathing room */
+  z-index: 1001;
+  max-width: 240px;   /* so it never spans the whole panel */
+}
+
+/* slim down the input inside it */
+.gm-panel .gm-search-wrapper input {
+  border: none;
+  outline: none;
+  font-size: 12px;
+  padding: 4px 8px;
+  flex: 1;
+}
+
+/* style the button */
+.gm-panel .gm-search-wrapper button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* placeholder color */
+.gm-panel .gm-search-wrapper input::placeholder {
+  color: #888;
+}
+
+/* magnifier button */
+.gm-panel .gm-search-wrapper button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* placeholder color */
+.gm-panel .gm-search-wrapper input::placeholder {
+  color: #888;
+}
+
+/* push the plus/minus zoom control down */
+.gm-panel .leaflet-control-zoom {
+  top: 10px !important;    /*search-bar height */
+}
+
+/* float the search bar up in the top-right corner */
+.gm-panel .gm-search-wrapper {
+  top: 15px;                /* from panel top */
+  left: 20px;               /* from the left edge */
+  right: 40px;              /* from the right edge */
+}
+
+
+/* ── search‐pill sizing ── */
+.gm-panel .gm-search-wrapper {
+  width: 200px;       /* overall pill width */
+  height: 30px;       /* overall pill height */
+  padding: 4px 12px;  /* vertical + horizontal padding */
+  box-sizing: border-box;
+}
+
+.gm-panel .gm-search-wrapper input {
+  height: 18px;       /* = 30px wrapper height − (6px top + 6px bottom) */
+  padding: 0 8px;     /* drop vertical padding, keep horizontal */
+  line-height: 18px;  /* match the height so text sits in the middle */
+
+ position: relative;
+  top: 6px
+
+}
+
+
+/* ── clean up the Leaflet zoom “bar” container ── */
+.gm-panel .leaflet-control-zoom.leaflet-bar {
+  background: transparent !important;
+  border: none          !important;
+  box-shadow: none      !important;
+  padding: 0            !important;
+}
+
+/* ── style each +/– button as a round, centered flex item ── */
+.gm-panel .leaflet-control-zoom.leaflet-bar a {
+  display:         flex   !important;
+  align-items:     center !important;
+  justify-content: center !important;
+
+  width:           32px   !important;
+  height:          32px   !important;
+  margin:          4px 0  !important;
+
+  border-radius:   50%    !important;
+  background:      #fff   !important;
+  box-shadow:      0 2px 6px rgba(0,0,0,0.2) !important;
+  border:          none   !important;
+
+  font-size:       1.2rem !important; /* to size the “+”/“–” */
+  line-height:     1      !important;
+  color:           #333   !important;
+}
+
+.zoom-widget {
+  position: absolute !important;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  padding-left: 0.2rem;
+  padding-right: 0.75rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
+  cursor: move;
+  z-index: 100;
+  width: 130px;
+  height: 40px;
+}
+
+/* handle-bar with three dots below the widget */
+.zoom-widget::after {
+  content: '•••';
+  position: absolute;
+  bottom: -8px;                /* tuck under the pill */
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;              /* smaller dots */
+  line-height: 1;
+  color: #666;
+  background: #ccc;
+  padding: 1px 4px;            /* slimmer bar */
+  border-radius: 4px 4px 0 0;  /* round the top corners */
+  cursor: grab;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  user-select: none;
+  z-index: 100;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+
+
+
+/* ◉ three-dot handle under the panel */
+.gm-panel::after {
+  content: '•••';
+  position: absolute;
+  bottom: -12px;             /* hang it below the panel */
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;           /* bump up the size */
+  line-height: 1;
+  color: #444;
+  background: #ddd;
+  padding: 3px 10px;
+  border-radius: 4px 4px 0 0;/* round the top corners */
+  cursor: grab;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  z-index: 1002;             /* above map content, below your widget (1000/1001) */
+  user-select: none;
+}
+
+/* add to your stylesheet */
+.maps-btn {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.maps-btn.active {
+  opacity: 1;
+}
+
+.zoom-btn {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;  /* ← this line adds the smooth fade */
+}
+.zoom-btn.active {
+  opacity: 1;
 }
