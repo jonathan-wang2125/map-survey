@@ -231,6 +231,8 @@ async _loadLeaflet() {
       this.status.textContent = '';
     },
 
+
+
     showModal(text){
       return new Promise(resolve => {
         const dlg  = document.getElementById('msgBox');
@@ -246,6 +248,12 @@ async _loadLeaflet() {
     },
 
     render(){
+      
+      // 0) clean up any previous zoom/widget/panel
+    document
+    .querySelectorAll('.zoom-widget, .zoom-result, .gm-panel')
+    .forEach(el => el.remove());
+
       let lastMapEvent = null;
       
       const q=this.current.question;
