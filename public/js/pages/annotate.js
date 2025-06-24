@@ -91,11 +91,11 @@ async _loadLeaflet() {
         }
       `;
       document.head.appendChild(style);
-    style.textContent += `
-    .maps-btn { opacity: 0.5; transition: opacity 0.2s ease; }
-    .maps-btn.active { opacity: 1; }
+      style.textContent += `
+        .maps-btn { opacity: 0.5; transition: opacity 0.2s ease; }
+        .maps-btn.active { opacity: 1; }`;
+
       this.form.addEventListener('submit',e=>this.submit(e));
-      `;
 
       this.timerDisplay = document.createElement('div');
       this.timerDisplay.id = 'annotation-timer';
