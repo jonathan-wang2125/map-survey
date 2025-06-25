@@ -347,16 +347,14 @@ async _loadLeaflet() {
     const widget = document.createElement('div');
     widget.classList.add('zoom-widget');
 
-    const img_rect = this.imgDiv.getBoundingClientRect();
-
     // anchor the widget in the top-right of the zoomContainer by default
-    widget.style.position = 'absolute';
-    widget.style.top      = `${img_rect.top}px`;
-    widget.style.left    = `${img_rect.left + 10}px`;
+    widget.style.position = 'relative';
+    widget.style.top      = '10px';   
+    widget.style.right    = '10px'; 
     widget.style.zIndex   = '9000';
 
 
-    document.body.appendChild(widget);
+    zoomContainer.appendChild(widget);
 
     // ── add the little drag handle ──
 const handle = document.createElement('div');
@@ -662,6 +660,7 @@ document.addEventListener('mouseup', () => {
     // jump back to its top
     qCol.scrollTo({ top: 0, behavior: 'auto' });
   }
+  window.scrollTo({ top: 0, behavior: 'auto' });
 },
 
     async submit (e) {
