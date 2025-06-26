@@ -88,7 +88,7 @@ export const past = {
         }
 
         // If for some reason we didn’t get a Label, fall back to an empty string
-        const correctLabel = questionJSON?.Label ?? '';
+        const correctLabel = questionJSON?.Label ?? r.nonconcurred_response ?? '';
 
         // Create the card
         const card = document.createElement('div');
@@ -122,7 +122,7 @@ export const past = {
           ${
             r.llm_eval === "Incorrect" && correctLabel !== null
             ? `<p class="correct-label" style="color:green; margin:0.25rem 0 0 0; font-style:italic;">
-                Correct answer: ${correctLabel}
+                ${questionJSON?.Label ? 'Correct Answer' : 'Other User\'s Response'}: ${correctLabel}
               </p>`
             : ``
           }

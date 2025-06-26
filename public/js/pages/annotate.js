@@ -168,7 +168,7 @@ async _loadLeaflet() {
           loader.hidden = false;
         
           try {
-            /* ---- run the long python job ---- */
+            /* ---- run python autograder ---- */
             const runResp = await fetch('/run-python', {
               method:'POST',
               headers:{ 'Content-Type':'application/json' },

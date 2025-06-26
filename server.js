@@ -4,14 +4,15 @@
  * Needs:      npm i express redis body-parser sharp
  */
 
-const express       = require('express');
+const express = require('express');
+const { promisify } = require('util');
 const fs            = require('fs');
 const path          = require('path');
 const bodyParser    = require('body-parser');
 const { createClient } = require('redis');
 const sharp         = require('sharp');
 const { execFile }  = require('child_process');
-const { pythonBin, pythonRoot, gradeDataset, createDataset, addEval, surveyPython, surveyRoot} = require('./public/config/paths');
+const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
@@ -19,6 +20,8 @@ let DATASET_IDS   = [];           // [id, id, …]
 // let DATASETS_MAP  = {};           // id → {id,label}
 
 const MAX_RESPONSES = 10;
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Redis Schema
@@ -276,6 +279,14 @@ async function getNextDataset (pid, currentDs) {
   /* 4. assign the user if not already */
   await setAccess(pid, nextDs, true);
   return nextDs;
+}
+
+async function getAssigned(dataset){
+  return assigned = await redis.sMembers(`v1:assignments:${dataset}`);
+}
+
+async function getStatus(pid, ds){
+  return exists = await redis.exists(`v1:${pid}:${ds}:meta`);
 }
 
 /* ───────────────  5. ROUTES  ─────────────────── */
@@ -566,7 +577,7 @@ app.post('/submit_dataset', express.json(), async (req, res) => {
 // GET /dataset_submission/:pid/:ds — has this dataset been submitted by this user?
 app.get('/dataset_submission/:pid/:ds', async (req, res) => {
   const { pid, ds } = req.params;
-  const exists = await redis.exists(`v1:${pid}:${ds}:meta`);
+  const exists = await getStatus(pid, ds);
   res.json({ submitted: exists === 1 });
 });
 
@@ -675,6 +686,8 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
 app.post('/run-python', async (req, res) => {
   const { prolificID, dataset } = req.body || {};
 
+  console.log(`Submitting ${dataset} for ${prolificID}`)
+
   if (!prolificID || !dataset)
     return res.status(400).json({ error: 'prolificID & dataset required' });
 
@@ -740,6 +753,42 @@ app.post('/run-python', async (req, res) => {
     );
 
     return;
+  }
+
+  // Check if dataset being submitted has two annotators
+  assigned = await getAssigned(dataset);
+
+  let allStatuses = [];
+  for (const member of assigned) {
+    const status = await getStatus(member, dataset);
+    console.log(status)
+    if (status)
+      allStatuses = allStatuses.concat(status);
+  }
+  // if dataset has two annotators, grade dataset
+  if (assigned.length > 1 && allStatuses.length > 0){
+    // find annotator matches and filter
+    try {
+      const compareOut = await execFileAsync(pythonBin, [compareResponses, assigned[0], assigned[1], dataset], { cwd: pythonRoot });   // pass PID and dataset to the script
+      const lastLine = compareOut.stdout.split('\n').filter(Boolean).pop() || '{}';
+      accuracy = JSON.parse(lastLine).accuracy;
+      const incorrect_annotations = JSON.parse(lastLine).incorrect_annotations;
+      if (typeof accuracy !== 'number' && accuracy !== 'string')
+        throw new Error('missing accuracy field');
+          // update user response for unmatched answers
+      const unmatchedOut = await execFileAsync(surveyPython, [addUnmatchedResponse, assigned[0], assigned[1], dataset, JSON.stringify(incorrect_annotations)], {cwd: surveyRoot});
+      console.log(unmatchedOut.stdout)
+    } catch (err) {
+      console.error('Error in executing compareRespones.py\n', err);
+      // Only one header ever goes out
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message || 'Internal error' });
+      }
+    }
+    const user1_meta_key = `v1:${assigned[0]}:${dataset}:meta`;
+    const user2_meta_key = `v1:${assigned[1]}:${dataset}:meta`;
+    await redis.set(user1_meta_key, accuracy);
+    await redis.set(user2_meta_key, accuracy);
   }
 
   try { nextDs = await getNextDataset(prolificID, dataset); }

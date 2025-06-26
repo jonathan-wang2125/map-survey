@@ -1,4 +1,5 @@
 import { Common } from '../common/common.js';
+import { showToast } from '../common/toast.js';
 
 export const status = {
     async init () {
@@ -126,12 +127,14 @@ export const status = {
                   allow: false  // revoke access
                 })
               });
+              console.log(resp.ok)
               if (!resp.ok) throw new Error();
               // on success, remove the row from the table:
               btn.closest('tr').remove();
               showToast(`Removed ${pid} from ${dataset}`);
               setTimeout(() => location.reload(), 300);
-            } catch {
+            } catch (err) {
+              console.error('Caught error:', err)
               alert('Failed to remove user; please try again.');
             }
           });
