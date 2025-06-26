@@ -13,6 +13,7 @@ const { createClient } = require('redis');
 const sharp         = require('sharp');
 const { execFile }  = require('child_process');
 const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
+const { get } = require('http');
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
@@ -282,11 +283,17 @@ async function getNextDataset (pid, currentDs) {
 }
 
 async function getAssigned(dataset){
-  return assigned = await redis.sMembers(`v1:assignments:${dataset}`);
+  return await redis.sMembers(`v1:assignments:${dataset}`);
 }
 
 async function getStatus(pid, ds){
-  return exists = await redis.exists(`v1:${pid}:${ds}:meta`);
+  return await redis.exists(`v1:${pid}:${ds}:meta`);
+}
+
+async function getMeta(pid, ds){
+  if (await getStatus(pid, ds) === 1){
+    return await redis.get(`v1:${pid}:${ds}:meta`);
+  }
 }
 
 /* ───────────────  5. ROUTES  ─────────────────── */
@@ -579,6 +586,13 @@ app.get('/dataset_submission/:pid/:ds', async (req, res) => {
   const { pid, ds } = req.params;
   const exists = await getStatus(pid, ds);
   res.json({ submitted: exists === 1 });
+});
+
+app.get('/dataset_meta/:pid/:ds', async (req, res) => {
+  const { pid, ds } = req.params;
+  const meta = await getMeta(pid, ds);
+  res.json({ accuracy: meta });
+  console.log(res.json)
 });
 
 app.get('/get_question_by_uid', async (req, res) => {
