@@ -313,7 +313,6 @@ async _loadLeaflet() {
                 y: e.clientY - rect.top
               };
             }
-
         // move the lens & update the zoom pane
         function moveLens(e) {
           lastMapEvent = e;
@@ -348,13 +347,13 @@ async _loadLeaflet() {
     widget.classList.add('zoom-widget');
 
     // anchor the widget in the top-right of the zoomContainer by default
-    widget.style.position = 'relative';
-    widget.style.top      = '10px';   
-    widget.style.right    = '10px'; 
+    widget.style.position = 'absolute';
+    widget.style.top      = '115px';   
+    widget.style.left    = '60px'; 
     widget.style.zIndex   = '9000';
 
 
-    zoomContainer.appendChild(widget);
+    document.body.appendChild(widget);
 
     // ── add the little drag handle ──
 const handle = document.createElement('div');
@@ -500,16 +499,22 @@ L.control.zoom({ position: 'bottomleft' }).addTo(map);
     e.preventDefault();
     const q = input.value.trim();
     if (!q) return;
+    
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`,
       { headers: { 'Accept-Language': 'en' } }
     );
     const hits = await res.json();
-    if (!hits.length) return;
-    const { lat, lon } = hits[0];
-    map.setView([+lat, +lon], 12);
-    if (marker) map.removeLayer(marker);
-    marker = L.marker([+lat, +lon]).addTo(map);
+    if (!hits.length) {
+    // <-- NEW: inform the user
+    alert('No results found for "' + q + '". Please try a different query.');
+    return;
+  }
+
+     const { lat, lon } = hits[0];
+  map.setView([+lat, +lon], 12);
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([+lat, +lon]).addTo(map);
   });
 
   // 6) finally insert
@@ -523,12 +528,17 @@ mapsBtn.classList.add('active');
   let dragOffsetY = 0;
 
   panel.addEventListener('mousedown', e => {
-    dragOffsetX = e.clientX - panel.offsetLeft;
-    dragOffsetY = e.clientY - panel.offsetTop;
-    document.body.style.userSelect = 'none';
-    if (e.target.closest('#osm-map')) return;
-    isDragging = true;
-  });
+    if (
+    e.target.closest('#osm-map') ||
+    e.target.closest('.gm-search-wrapper')
+  ) {
+    return;
+  }
+  dragOffsetX = e.clientX - panel.offsetLeft;
+  dragOffsetY = e.clientY - panel.offsetTop;
+  document.body.style.userSelect = 'none';
+  isDragging = true;
+});
 
   window.addEventListener('mousemove', e => {
     if (!isDragging) return;

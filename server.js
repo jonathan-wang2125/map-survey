@@ -600,7 +600,6 @@ app.get('/dataset_meta/:pid/:ds', async (req, res) => {
   const { pid, ds } = req.params;
   const meta = await getMeta(pid, ds);
   res.json({ accuracy: meta });
-  console.log(res.json)
 });
 
 app.get('/get_question_by_uid', async (req, res) => {
