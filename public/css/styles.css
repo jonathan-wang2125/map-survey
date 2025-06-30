@@ -320,24 +320,6 @@ nav.navbar .welcome .nav-user {
   border-left: 1px solid #ddd;
 }
 
-/* ── pill-shaped zoom widget with two semicircles on each end ── */
-.zoom-widget {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #ccc;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-radius: 999px;      /* makes it a perfect pill */
-  cursor: move;
-  z-index: 8400;
-  gap: 0.75rem;           /* or 1rem if you want even more space */
-  padding: 0.5rem 1rem;
-}
 
 .zoom-widget button {
   background: transparent;
@@ -379,7 +361,6 @@ nav.navbar .welcome .nav-user {
   border: none;
   outline: none;
   font-size: 12px;
-  padding: 4px 8px;
   flex: 1;
 }
 
@@ -387,7 +368,6 @@ nav.navbar .welcome .nav-user {
 .gm-panel .gm-search-wrapper button {
   border: none;
   background: transparent;
-  cursor: pointer;
   padding: 4px;
 }
 
@@ -418,16 +398,11 @@ nav.navbar .welcome .nav-user {
 .gm-panel .gm-search-wrapper {
   top: 15px;                /* from panel top */
   left: 20px;               /* from the left edge */
-  right: 40px;              /* from the right edge */
-}
-
-
-/* ── search‐pill sizing ── */
-.gm-panel .gm-search-wrapper {
-  width: 200px;       /* overall pill width */
+  right: 40px; 
+   width: 200px;       /* overall pill width */
   height: 30px;       /* overall pill height */
   padding: 4px 12px;  /* vertical + horizontal padding */
-  box-sizing: border-box;
+  box-sizing: border-box;     /* from the right edge */
 }
 
 .gm-panel .gm-search-wrapper input {
@@ -470,9 +445,6 @@ nav.navbar .welcome .nav-user {
 }
 
 .zoom-widget {
-  position: absolute !important;
-  top: 10px;
-  left: 10px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -483,8 +455,6 @@ nav.navbar .welcome .nav-user {
   border: 1px solid #ccc;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: 999px;
-  cursor: move;
-  z-index: 100;
   width: 130px;
   height: 40px;
 }
@@ -495,8 +465,7 @@ nav.navbar .welcome .nav-user {
   position: absolute;
   bottom: -8px;                /* tuck under the pill */
   left: 50%;
-  transform: translateX(-50%);
-  font-size: 8px;              /* smaller dots */
+  transform: translateX(-50%);          
   line-height: 1;
   color: #666;
   background: #ccc;
@@ -507,7 +476,6 @@ nav.navbar .welcome .nav-user {
   user-select: none;
   z-index: 100;
   font-size: 12px;
-  padding: 2px 8px;
 }
 
 
