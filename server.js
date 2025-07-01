@@ -195,15 +195,27 @@ async function getNextDataset (pid, currentDs) {
   const existing   = await redis.sMembers(campSetKey);
   let nextDs = null;
 
-  /* 2. pick an existing dataset with < 2 assignees */
   for (const cand of existing) {
-    const numAssigned = await redis.sCard(`v1:assignments:${cand}`);
-    if (numAssigned >= 2) continue;                      // already full
-  
     const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
-    if (!assigned) {                                     // slot free + user not on it
+    if (!assigned) continue;
+
+    const metaExists = await redis.exists(`v1:${pid}:${cand}:meta`);
+    if (!metaExists && cand !== currentDs) {
       nextDs = cand;
       break;
+    }
+  }
+
+  if (!nextDs) {
+    for (const cand of existing) {
+      const numAssigned = await redis.sCard(`v1:assignments:${cand}`);
+      if (numAssigned >= 2) continue;
+
+      const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
+      if (!assigned) {
+        nextDs = cand;
+        break;
+      }
     }
   }
 
