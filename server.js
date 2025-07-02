@@ -4,6 +4,12 @@
  * Needs:      npm i express redis body-parser sharp
  */
 
+const DEFAULT_REDIS_PORT  = 6397;
+const DEFAULT_SERVER_PORT = 3000;
+
+const REDIS_PORT = process.env.REDIS_PORT || DEFAULT_REDIS_PORT;
+const PORT       = process.env.PORT       || DEFAULT_SERVER_PORT;
+
 const express = require('express');
 const { promisify } = require('util');
 const fs            = require('fs');
@@ -80,7 +86,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/maps', express.static(path.join(__dirname, 'maps')));
 
-const redis = createClient({ url: 'redis://localhost:6397' });
+const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
 
 /* prefix helpers --------------------------------------------------------- */
 const v1            = key => `v1:${key}`;
@@ -927,5 +933,5 @@ app.get('/export_responses/:pid/:ds', async (req, res) => {
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
-  app.listen(3000, () => console.log('Started server on http://localhost:3000'));
+  app.listen(PORT, () => console.log(`Started server on http://localhost:${PORT}`));
 })();
