@@ -4,6 +4,12 @@
  * Needs:      npm i express redis body-parser sharp
  */
 
+const DEFAULT_REDIS_PORT  = 6397;
+const DEFAULT_SERVER_PORT = 3000;
+
+const REDIS_PORT = process.env.REDIS_PORT || DEFAULT_REDIS_PORT;
+const PORT       = process.env.PORT       || DEFAULT_SERVER_PORT;
+
 const express = require('express');
 const { promisify } = require('util');
 const fs            = require('fs');
@@ -14,6 +20,8 @@ const sharp         = require('sharp');
 const { execFile }  = require('child_process');
 const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
 const { get } = require('http');
+
+const ADJUDICATION_PASSCODE = 'letmein';
 
 /* ───────────────  1. DATASETS  ─────────────── */
 let DATASETS      = [];           // [{id,label}, …]
@@ -78,7 +86,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/maps', express.static(path.join(__dirname, 'maps')));
 
-const redis = createClient({ url: 'redis://localhost:6397' });
+const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
 
 /* prefix helpers --------------------------------------------------------- */
 const v1            = key => `v1:${key}`;
@@ -707,6 +715,63 @@ app.post('/edit_qresponse/:pid', async (req, res) => {
   res.json({ success: true });
 });
 
+// User requests adjudication for a specific answer
+app.post('/request_adjudication', express.json(), async (req, res) => {
+  const { pid, dataset, uid } = req.body || {};
+  if (!pid || !dataset || !uid)
+    return res.status(400).json({ error: 'missing fields' });
+
+  await redis.sAdd('v1:adjudications', `${pid}:${dataset}:${uid}`);
+  res.json({ ok: true });
+});
+
+// List all pending adjudication requests
+app.get('/adjudications', async (req, res) => {
+  if (req.query.code !== ADJUDICATION_PASSCODE)
+    return res.status(403).json({ error: 'forbidden' });
+
+  const ids = await redis.sMembers('v1:adjudications');
+  const out = [];
+  for (const id of ids) {
+    const [pid, dataset, uid] = id.split(':');
+    const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
+    const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    let answer = '', question = '', label = '';
+    try { if (ansRaw) answer = JSON.parse(ansRaw.toString()).answer || ''; } catch {}
+    try {
+      if (qRaw) {
+        const q = JSON.parse(qRaw.toString());
+        question = q.Question || q.question || '';
+        label    = q.Label || '';
+      }
+    } catch {}
+    out.push({ pid, dataset, uid, question, answer, label });
+  }
+  res.json(out);
+});
+
+// Resolve an adjudication request
+app.post('/adjudicate_result', express.json(), async (req, res) => {
+  if (req.query.code !== ADJUDICATION_PASSCODE)
+    return res.status(403).json({ error: 'forbidden' });
+
+  const { pid, dataset, uid, correct } = req.body || {};
+  if (!pid || !dataset || !uid)
+    return res.status(400).json({ error: 'missing fields' });
+
+  const key = `v1:${pid}:${dataset}:${uid}`;
+  const raw = await redis.get(key);
+  if (raw) {
+    try {
+      const obj = JSON.parse(raw.toString());
+      obj.adjudication = correct ? 'Correct' : 'Incorrect';
+      await redis.set(key, JSON.stringify(obj));
+    } catch {}
+  }
+  await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
+  res.json({ ok: true });
+});
+
 // POST /run-python – grade a dataset exactly once
 app.post('/run-python', async (req, res) => {
   const { prolificID, dataset } = req.body || {};
@@ -879,5 +944,5 @@ app.get('/export_responses/:pid/:ds', async (req, res) => {
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
-  app.listen(3000, () => console.log('Started server on http://localhost:3000'));
+  app.listen(PORT, () => console.log(`Started server on http://localhost:${PORT}`));
 })();
