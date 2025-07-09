@@ -709,6 +709,8 @@ app.post('/request_adjudication', express.json(), async (req, res) => {
   const { pid, dataset, uid } = req.body || {};
   if (!pid || !dataset || !uid)
     return res.status(400).json({ error: 'missing fields' });
+  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+    return res.status(400).json({ error: 'adjudication not allowed' });
 
   await redis.sAdd('v1:adjudications', `${pid}:${dataset}:${uid}`);
   res.json({ ok: true });
@@ -723,18 +725,34 @@ app.get('/adjudications', async (req, res) => {
   const out = [];
   for (const id of ids) {
     const [pid, dataset, uid] = id.split(':');
+    if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+      continue;
     const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
     const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
-    let answer = '', question = '', label = '';
-    try { if (ansRaw) answer = JSON.parse(ansRaw.toString()).answer || ''; } catch {}
+    let answer = '', otherAnswer = '', question = '', label = '', mapFile = '';
+    try {
+      if (ansRaw) {
+        const obj = JSON.parse(ansRaw.toString());
+        answer = obj.answer || '';
+        otherAnswer = obj.nonconcurred_response || '';
+      }
+    } catch {}
     try {
       if (qRaw) {
         const q = JSON.parse(qRaw.toString());
         question = q.Question || q.question || '';
         label    = q.Label || '';
+        mapFile  = q.Map || q.map || '';
+
       }
     } catch {}
-    out.push({ pid, dataset, uid, question, answer, label });
+    let otherPid = null;
+    try {
+      const assigned = await getAssigned(dataset);
+      otherPid = assigned.find(p => p !== pid) || null;
+    } catch {}
+
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile });
   }
   res.json(out);
 });
@@ -744,19 +762,55 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
     return res.status(403).json({ error: 'forbidden' });
 
-  const { pid, dataset, uid, correct } = req.body || {};
+  const { pid, dataset, uid, correct, reason } = req.body || {};
   if (!pid || !dataset || !uid)
     return res.status(400).json({ error: 'missing fields' });
 
-  const key = `v1:${pid}:${dataset}:${uid}`;
-  const raw = await redis.get(key);
-  if (raw) {
+  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+    return res.status(400).json({ error: 'adjudication not allowed' });
+
+  let otherPid = null;
+  try {
+    const assigned = await getAssigned(dataset);
+    otherPid = assigned.find(p => p !== pid) || null;
+  } catch {}
+
+  const key1 = `v1:${pid}:${dataset}:${uid}`;
+  const raw1 = await redis.get(key1);
+  if (raw1) {
     try {
-      const obj = JSON.parse(raw.toString());
+      const obj = JSON.parse(raw1.toString());
       obj.adjudication = correct ? 'Correct' : 'Incorrect';
-      await redis.set(key, JSON.stringify(obj));
+      obj.adjudication_reason = reason || '';
+      await redis.set(key1, JSON.stringify(obj));
     } catch {}
   }
+
+  if (otherPid) {
+    const key2 = `v1:${otherPid}:${dataset}:${uid}`;
+    const raw2 = await redis.get(key2);
+    if (raw2) {
+      try {
+        const obj2 = JSON.parse(raw2.toString());
+        obj2.adjudication = correct ? 'Incorrect' : 'Correct';
+        obj2.adjudication_reason = reason || '';
+        await redis.set(key2, JSON.stringify(obj2));
+      } catch {}
+    }
+  }
+
+  await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
+  res.json({ ok: true });
+});
+
+// Cancel an adjudication request without judging
+app.post('/cancel_adjudication', express.json(), async (req, res) => {
+  if (req.query.code !== ADJUDICATION_PASSCODE)
+    return res.status(403).json({ error: 'forbidden' });
+
+  const { pid, dataset, uid } = req.body || {};
+  if (!pid || !dataset || !uid)
+    return res.status(400).json({ error: 'missing fields' });
   await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
   res.json({ ok: true });
 });

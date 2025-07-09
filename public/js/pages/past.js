@@ -172,7 +172,9 @@ export const past = {
           </div>
         `;
 
-        if (r.llm_eval === 'Incorrect') {
+        if (r.llm_eval === 'Incorrect' &&
+          !Common.ds().endsWith('Accuracy') &&
+          !Common.ds().endsWith('Training')) {
           const adjBtn = document.createElement('button');
           adjBtn.textContent = 'Request adjudication';
           adjBtn.style.marginLeft = '0.5rem';
