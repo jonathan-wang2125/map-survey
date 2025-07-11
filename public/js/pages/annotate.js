@@ -347,7 +347,7 @@ async _loadLeaflet() {
     widget.classList.add('zoom-widget');
 
     // anchor the widget in the top-right of the zoomContainer by default
-    widget.style.position = 'absolute';
+    widget.style.position = 'fixed';
     widget.style.top      = '115px';   
     widget.style.left    = '60px'; 
     widget.style.zIndex   = '9000';
