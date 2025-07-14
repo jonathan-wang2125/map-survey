@@ -15,4 +15,7 @@ start-daemons:
 	# KILL: kill -9 PID
 	npx nodemon --exitcrash --ignore public server.js
 
-
+start-test:
+	redis-stable/src/redis-server redis-stable/redis.conf --port 6380 --daemonize yes
+	PORT=3001 REDIS_PORT=6380 \
+	npx nodemon --exitcrash --ignore public server.js

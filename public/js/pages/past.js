@@ -172,6 +172,24 @@ export const past = {
           </div>
         `;
 
+        if (r.llm_eval === 'Incorrect' &&
+          !Common.ds().endsWith('Accuracy') &&
+          !Common.ds().endsWith('Training')) {
+          const adjBtn = document.createElement('button');
+          adjBtn.textContent = 'Request adjudication';
+          adjBtn.style.marginLeft = '0.5rem';
+          card.querySelector('div').appendChild(adjBtn);
+          adjBtn.addEventListener('click', async () => {
+            adjBtn.disabled = true;
+            adjBtn.textContent = 'Requested';
+            await fetch('/request_adjudication', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pid: Common.pid(), dataset: Common.ds(), uid: r.uid })
+            });
+          });
+        }
+
         /* -------- grab elements -------- */
         const ansIn   = card.querySelector('input[type=text]');
         // const diffIn  = card.querySelector('input[type=number]');
