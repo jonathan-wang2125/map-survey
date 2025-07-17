@@ -773,8 +773,8 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
     return res.status(403).json({ error: 'forbidden' });
 
-  const { pid, dataset, uid, correct, reason } = req.body || {};
-  if (!pid || !dataset || !uid)
+  const { pid, dataset, uid, choice, reason } = req.body || {};
+  if (!pid || !dataset || !uid || !choice)
     return res.status(400).json({ error: 'missing fields' });
 
   if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
@@ -791,7 +791,10 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (raw1) {
     try {
       const obj = JSON.parse(raw1.toString());
-      obj.adjudication = correct ? 'Correct' : 'Incorrect';
+      obj.adjudication =
+        choice === '1' ? 'Correct'
+        : choice === '2' ? 'Incorrect'
+        : 'Rejected';
       obj.adjudication_reason = reason || '';
       await redis.set(key1, JSON.stringify(obj));
     } catch {}
@@ -803,7 +806,10 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
     if (raw2) {
       try {
         const obj2 = JSON.parse(raw2.toString());
-        obj2.adjudication = correct ? 'Incorrect' : 'Correct';
+        obj2.adjudication =
+          choice === '1' ? 'Incorrect'
+          : choice === '2' ? 'Correct'
+          : 'Rejected';
         obj2.adjudication_reason = reason || '';
         await redis.set(key2, JSON.stringify(obj2));
       } catch {}
