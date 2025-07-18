@@ -5,7 +5,7 @@ export const status = {
     async init () {
       Common.initNavbar();
   
-      const topics = ['Military', 'Natural World', 'Urban', 'Aviation', 'Test']; // extend as needed
+      const topics = ['Military', 'NaturalWorld', 'Urban', 'Aviation', 'Test']; // extend as needed
       const statusBox = document.getElementById('status');              // lives in the **first** container
       statusBox.textContent = 'Loading…';
   
