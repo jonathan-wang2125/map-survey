@@ -127,6 +127,11 @@ async function getDatasetQuestions(dsID) {
   }
 
   const keys = uids.map(uid => `v1:datasets:${dsID}:${uid}`);
+  // uids.forEach(uid => {
+  //   if (uid === '6d70fc39-7e2a-4e99-90e2-dd27b7d490ae') {
+  //     console.log(`v1:datasets:${dsID}:${uid}`);
+  //   }
+  // });
   const vals = await redis.mGet(keys);
 
   const arr = [];
