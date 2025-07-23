@@ -114,7 +114,7 @@ export const select = {
         });
           actions.append(p);
          } else {
-        console.warn(`Non-numeric accuracy for ${ds.id}:`, raw);
+        //console.warn(`Non-numeric accuracy for ${ds.id}:`, raw);
       }
     }
   } catch (err) {
