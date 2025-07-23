@@ -111,7 +111,6 @@ export const past = {
         card.innerHTML = `
           <p><strong>Q:</strong> ${r.question}</p>
           ${r.adjudication ? `<span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>` : ''}
-          <p><strong>Q:</strong> ${r.question}</p>
 
           <label>Your Answer:
             ${
