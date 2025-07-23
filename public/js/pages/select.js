@@ -15,8 +15,33 @@ export const select = {
         document.body.append(msg);
         return;
       }
+
+      // 2) batch-fetch submission statuses in parallel
+       const submissionResults = await Promise.all(
+         datasets.map(ds =>
+          fetch(`/dataset_submission/${pid}/${ds.id}`)
+          .then(r => r.json())
+           .then(j => ({ id: ds.id, submitted: j.submitted }))
+         )
+        );
+        const subsById = Object.fromEntries(
+          submissionResults.map(({ id, submitted }) => [id, submitted])
+     );
+// 3) batch-fetch metadata for those that were submitted
+      const metaResults = await Promise.all(
+        submissionResults
+        .filter(x => x.submitted)
+        .map(x =>
+           fetch(`/dataset_meta/${pid}/${encodeURIComponent(x.id)}`)
+          .then(r => (r.ok ? r.json() : { accuracy: NaN }))
+          .then(j => ({ id: x.id, accuracy: Number(j.accuracy) }))
+        )
+      );
+      const metaById = Object.fromEntries(
+        metaResults.map(({ id, accuracy }) => [id, accuracy])
+        );
   
-      // 2) group by topic
+      // 4) group by topic
       const byTopic = {};
       for (const ds of datasets) {
         const topic = ds.topic || 'Uncategorized';
@@ -47,10 +72,7 @@ export const select = {
   
         // d) for each dataset in this topic, build a .dataset-card
         for (const ds of list) {
-          // fetch whether it’s been submitted
-          const { submitted } = await fetch(
-            `/dataset_submission/${pid}/${ds.id}`
-          ).then(r => r.json());
+          const submitted = !!subsById[ds.id];
   
           // card element
           const card = document.createElement('div');
@@ -92,36 +114,22 @@ export const select = {
           actions.append(anno, past, badge);
           card.append(actions);
 
-              if (submitted) {
-  try {
-    const res = await fetch(
-      `/dataset_meta/${pid}/${encodeURIComponent(ds.id)}`
-    );
-    // only proceed on 200
-   if (!res.ok) {
-      console.warn(`Accuracy endpoint returned ${res.status} for ${ds.id}`);
-      } else {
-      const { accuracy: raw } = await res.json();
-      const acc = Number(raw);
-      if (!isNaN(acc)) {
-        const p = document.createElement('p');
-        p.classList.add('accuracy');
-        p.textContent = `Accuracy: ${(acc * 100).toFixed(1)}%`;
-        Object.assign(p.style, {
-          margin: '0.25em 0 0',
-          fontSize: '0.9em',
-          color: '#555'
-        });
-          actions.append(p);
-         } else {
-        //console.warn(`Non-numeric accuracy for ${ds.id}:`, raw);
-      }
-    }
-  } catch (err) {
-    console.warn(`Could not load accuracy for ${ds.id}:`, err);
-  }
-}
-  
+              // Render accuracy from our bulk‐fetched metaById (no per‐item fetch)
+          if (submitted) {
+            const acc = metaById[ds.id];
+            if (typeof acc === 'number' && !isNaN(acc)) {
+              const p = document.createElement('p');
+              p.classList.add('accuracy');
+              p.textContent = `Accuracy: ${(acc * 100).toFixed(1)}%`;
+              Object.assign(p.style, {
+                margin: '0.25em 0 0',
+                fontSize: '0.9em',
+                 color: '#555'
+                 });
+                 actions.append(p);
+                  
+                 }
+          }
 
           // enable Past answers if any exist
           (async () => {
