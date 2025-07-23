@@ -84,6 +84,15 @@ form input,form textarea{
 .answer-card input{width:100%}
 .answer-card button{margin-top:.4rem}
 
+.adjudication-flag{
+  display:inline-block;
+  background:#eee;
+  padding:0.2rem 0.5rem;
+  border-radius:4px;
+  font-size:0.9rem;
+  margin-bottom:0.25rem;
+}
+
 /* ---------- Utility buttons ---------- */
 a.dlBtn{
   background:#006699;

@@ -768,6 +768,48 @@ app.get('/adjudications', async (req, res) => {
   res.json(out);
 });
 
+// List previously resolved adjudications
+app.get('/past_adjudications', async (req, res) => {
+  if (req.query.code !== ADJUDICATION_PASSCODE)
+    return res.status(403).json({ error: 'forbidden' });
+
+  const ids = await redis.sMembers('v1:past_adjudications');
+  const out = [];
+  for (const id of ids) {
+    const [pid, dataset, uid] = id.split(':');
+    const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
+    const qRaw  = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    let answer='', otherAnswer='', question='', label='', mapFile='';
+    let adjudication='', adjudication_reason='';
+    try {
+      if (ansRaw) {
+        const obj = JSON.parse(ansRaw.toString());
+        answer = obj.answer || '';
+        otherAnswer = obj.nonconcurred_response || '';
+        adjudication = obj.adjudication || '';
+        adjudication_reason = obj.adjudication_reason || '';
+      }
+    } catch {}
+    try {
+      if (qRaw) {
+        const q = JSON.parse(qRaw.toString());
+        question = q.Question || q.question || '';
+        label = q.Label || '';
+        mapFile = q.Map || q.map || '';
+      }
+    } catch {}
+    let otherPid = null;
+    try {
+      const assigned = await getAssigned(dataset);
+      otherPid = assigned.find(p => p !== pid) || null;
+    } catch {}
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label,
+               mapFile, adjudication, adjudication_reason });
+  }
+  res.json(out);
+});
+
+
 // Resolve an adjudication request
 app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
@@ -815,6 +857,8 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
       } catch {}
     }
   }
+
+  await redis.sAdd('v1:past_adjudications', `${pid}:${dataset}:${uid}`);
 
   await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
   res.json({ ok: true });
