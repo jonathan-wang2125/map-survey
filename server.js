@@ -746,11 +746,13 @@ app.get('/adjudications', async (req, res) => {
     const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
     const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
     let answer = '', otherAnswer = '', question = '', label = '', mapFile = '';
+    let adjudicator_label = '';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
         answer = obj.answer || '';
         otherAnswer = obj.nonconcurred_response || '';
+        adjudicator_label = obj.adjudicator_label || '';
       }
     } catch {}
     try {
@@ -768,8 +770,7 @@ app.get('/adjudications', async (req, res) => {
       otherPid = assigned.find(p => p !== pid) || null;
     } catch {}
 
-    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile });
-  }
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile, adjudicator_label });  }
   res.json(out);
 });
 
@@ -786,6 +787,7 @@ app.get('/past_adjudications', async (req, res) => {
     const qRaw  = await redis.get(`v1:datasets:${dataset}:${uid}`);
     let answer='', otherAnswer='', question='', label='', mapFile='';
     let adjudication='', adjudication_reason='';
+    let adjudicator_label='';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
@@ -793,6 +795,7 @@ app.get('/past_adjudications', async (req, res) => {
         otherAnswer = obj.nonconcurred_response || '';
         adjudication = obj.adjudication || '';
         adjudication_reason = obj.adjudication_reason || '';
+        adjudicator_label = obj.adjudicator_label || '';
       }
     } catch {}
     try {
@@ -809,7 +812,7 @@ app.get('/past_adjudications', async (req, res) => {
       otherPid = assigned.find(p => p !== pid) || null;
     } catch {}
     out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label,
-               mapFile, adjudication, adjudication_reason });
+      mapFile, adjudication, adjudication_reason, adjudicator_label });
   }
   res.json(out);
 });
@@ -820,7 +823,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
     return res.status(403).json({ error: 'forbidden' });
 
-  const { pid, dataset, uid, choice, reason } = req.body || {};
+  const { pid, dataset, uid, choice, reason, label } = req.body || {};
   if (!pid || !dataset || !uid || !choice)
     return res.status(400).json({ error: 'missing fields' });
 
@@ -843,6 +846,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
         : choice === '2' ? 'Incorrect'
         : 'Rejected';
       obj.adjudication_reason = reason || '';
+      obj.adjudicator_label = label || '';
       await redis.set(key1, JSON.stringify(obj));
     } catch {}
   }
@@ -858,6 +862,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
           : choice === '2' ? 'Correct'
           : 'Rejected';
         obj2.adjudication_reason = reason || '';
+        obj2.adjudicator_label = label || '';
         await redis.set(key2, JSON.stringify(obj2));
       } catch {}
     }
