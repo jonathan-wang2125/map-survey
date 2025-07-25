@@ -57,6 +57,21 @@ const execFileAsync = promisify(execFile);
  *                                              origTimestamp, editTimestamp, eval }
  */
 
+/* ───────────────  2. APP & REDIS  ───────────── */
+const app = express();
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/maps', express.static(path.join(__dirname, 'maps')));
+
+const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
+
+/* prefix helpers --------------------------------------------------------- */
+const v1            = key => `v1:${key}`;
+const v1Users       = v1('usernames');                // set of pids
+const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
+const v1AssignDb    = ds => v1(`assignments:${ds}`);
+const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
+
 /**
  * Populate DATASETS / DATASET_IDS / DATASETS_MAP from Redis.
  *   – v1:datasets         : SET of dataset IDs
@@ -80,21 +95,6 @@ async function getDatasetMeta(dsID) {
   catch  { return { label: dsID, description: '', topic: ''}; }
 }
 
-/* ───────────────  2. APP & REDIS  ───────────── */
-const app = express();
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/maps', express.static(path.join(__dirname, 'maps')));
-
-const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
-
-/* prefix helpers --------------------------------------------------------- */
-const v1            = key => `v1:${key}`;
-const v1Users       = v1('usernames');                // set of pids
-const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
-const v1AssignDb    = ds => v1(`assignments:${ds}`);
-const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
-
 /* ---------- Question normaliser ---------- */
 function normalise(q) {
   // canon-field: uid
@@ -114,6 +114,26 @@ function normalise(q) {
 /* ───────────────  3. QUESTIONS CACHE  ───────── */
 const questionsCache = {};
 
+async function fetchAllAssignments(dsIDs) {
+  // 1) build the pipeline
+  const pipeline = redis.multi();
+  for (const ds of dsIDs) {
+    pipeline.sMembers(`v1:assignments:${ds}`);
+  }
+
+  // 2) execute & await the pipeline
+  //    returns an array of [err, result] tuples, one per command
+  const results = await pipeline.exec();
+
+  // 3) map back to a dict keyed by dsID
+  const membersByDs = {};
+  for (let i = 0; i < dsIDs.length; i++) {
+    membersByDs[dsIDs[i]] = results[i];
+  }
+
+  return membersByDs;
+}
+
 /**
  * Return an array of questions for <dsID>.
  * If the set in Redis is empty, cache and return [] without calling MGET.
@@ -127,6 +147,11 @@ async function getDatasetQuestions(dsID) {
   }
 
   const keys = uids.map(uid => `v1:datasets:${dsID}:${uid}`);
+  // uids.forEach(uid => {
+  //   if (uid === '6d70fc39-7e2a-4e99-90e2-dd27b7d490ae') {
+  //     console.log(`v1:datasets:${dsID}:${uid}`);
+  //   }
+  // });
   const vals = await redis.mGet(keys);
 
   const arr = [];
@@ -410,8 +435,10 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   /* --- all users assigned to *any* dataset in this campaign --- */
   const userSet = new Set();
   for (const ds of dsIDs) {
-    const members = await redis.sMembers(`v1:assignments:${ds}`);
-    members.forEach(u => userSet.add(u));
+    if (ds.endsWith("Accuracy")) {
+      const members = await redis.sMembers(`v1:assignments:${ds}`);
+      members.forEach(u => userSet.add(u));
+    }
   }
   const users = Array.from(userSet);
 
@@ -429,35 +456,64 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   });
   const accuracyArr = await Promise.all(accPromises);
 
-  /* --- per-user, per-dataset progress ----------------------- */
+  const membersByDs = await fetchAllAssignments(dsIDs);
+
   const progArr = [];
-  for (const pid of users) {
-    for (const ds of dsIDs) {
-      const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
-      if (!assigned) continue;
+  for (const ds of dsIDs){
+    const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
 
-      const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
-
-      /* answered count */
+    for (const pid of membersByDs[ds]){
       const pattern = `v1:${pid}:${ds}:*`;
-      let answered = 0, lastTS = null;
+      let answered = 0, lastTS = null, submitted = false;
       for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
-        const key = keyBuf.toString();
-        if (key.endsWith(':meta')) continue;
-        answered++;
+          const key = keyBuf.toString();
+          if (key.endsWith(':meta')){
+            submitted = true;
+            continue;
+          }
+          answered++;
 
-        const raw = await redis.get(key);
-        try {
-          const obj = JSON.parse(raw);
-          const ts  = obj.editTimestamp || obj.origTimestamp;
-          if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
-        } catch {}
+          const raw = await redis.get(key);
+          try {
+            const obj = JSON.parse(raw);
+            const ts  = obj.editTimestamp || obj.origTimestamp;
+            if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
+          } catch {}
       }
-
-      const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
       progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
     }
+    //console.log(ds, membersByDs[ds])
   }
+
+  // /* --- per-user, per-dataset progress ----------------------- */
+  // const progArr = [];
+  // for (const pid of users) {
+  //   for (const ds of dsIDs) {
+  //     const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
+  //     if (!assigned) continue;
+
+  //     const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
+
+  //     /* answered count */
+  //     const pattern = `v1:${pid}:${ds}:*`;
+  //     let answered = 0, lastTS = null;
+  //     for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
+  //       const key = keyBuf.toString();
+  //       if (key.endsWith(':meta')) continue;
+  //       answered++;
+
+  //       const raw = await redis.get(key);
+  //       try {
+  //         const obj = JSON.parse(raw);
+  //         const ts  = obj.editTimestamp || obj.origTimestamp;
+  //         if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
+  //       } catch {}
+  //     }
+
+  //     const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
+  //     progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
+  //   }
+  // }
 
   /* ➊ read campaign meta (curIndex, numImages, etc.) */
   const metaRaw = await redis.get(`v1:campaigns:${topic}:meta`);
@@ -741,11 +797,13 @@ app.get('/adjudications', async (req, res) => {
     const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
     const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
     let answer = '', otherAnswer = '', question = '', label = '', mapFile = '';
+    let adjudicator_label = '';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
         answer = obj.answer || '';
         otherAnswer = obj.nonconcurred_response || '';
+        adjudicator_label = obj.adjudicator_label || '';
       }
     } catch {}
     try {
@@ -763,8 +821,7 @@ app.get('/adjudications', async (req, res) => {
       otherPid = assigned.find(p => p !== pid) || null;
     } catch {}
 
-    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile });
-  }
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile, adjudicator_label });  }
   res.json(out);
 });
 
@@ -781,6 +838,7 @@ app.get('/past_adjudications', async (req, res) => {
     const qRaw  = await redis.get(`v1:datasets:${dataset}:${uid}`);
     let answer='', otherAnswer='', question='', label='', mapFile='';
     let adjudication='', adjudication_reason='';
+    let adjudicator_label='';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
@@ -788,6 +846,7 @@ app.get('/past_adjudications', async (req, res) => {
         otherAnswer = obj.nonconcurred_response || '';
         adjudication = obj.adjudication || '';
         adjudication_reason = obj.adjudication_reason || '';
+        adjudicator_label = obj.adjudicator_label || '';
       }
     } catch {}
     try {
@@ -804,7 +863,7 @@ app.get('/past_adjudications', async (req, res) => {
       otherPid = assigned.find(p => p !== pid) || null;
     } catch {}
     out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label,
-               mapFile, adjudication, adjudication_reason });
+      mapFile, adjudication, adjudication_reason, adjudicator_label });
   }
   res.json(out);
 });
@@ -815,7 +874,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
     return res.status(403).json({ error: 'forbidden' });
 
-  const { pid, dataset, uid, choice, reason } = req.body || {};
+  const { pid, dataset, uid, choice, reason, label } = req.body || {};
   if (!pid || !dataset || !uid || !choice)
     return res.status(400).json({ error: 'missing fields' });
 
@@ -838,6 +897,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
         : choice === '2' ? 'Incorrect'
         : 'Rejected';
       obj.adjudication_reason = reason || '';
+      obj.adjudicator_label = label || '';
       await redis.set(key1, JSON.stringify(obj));
     } catch {}
   }
@@ -853,6 +913,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
           : choice === '2' ? 'Correct'
           : 'Rejected';
         obj2.adjudication_reason = reason || '';
+        obj2.adjudicator_label = label || '';
         await redis.set(key2, JSON.stringify(obj2));
       } catch {}
     }

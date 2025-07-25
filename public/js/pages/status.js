@@ -19,9 +19,11 @@ export const status = {
       for (const topic of topics) {
         let data;
         try {
+          console.log(new Date().toISOString());
           const r = await fetch(`/admin/campaign_status/${topic}`);
           if (!r.ok) throw new Error();
           data = await r.json();
+          console.log(new Date().toISOString());
         } catch {
           console.warn(`Campaign “${topic}” not found or empty`);
           continue;                       // skip missing campaigns
