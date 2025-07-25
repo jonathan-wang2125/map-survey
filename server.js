@@ -114,6 +114,72 @@ function normalise(q) {
 /* ───────────────  3. QUESTIONS CACHE  ───────── */
 const questionsCache = {};
 
+async function fetchUserQuestions(dsIDs, membersByDs){
+  // 1) Build the multi (pipeline)
+  const multi = redis.multi();
+  const patterns = [];
+
+  // queue a KEYS command for every (ds, pid) pattern
+  for (const ds of dsIDs) {
+    for (const pid of membersByDs[ds]) {
+      const pattern = `v1:${pid}:${ds}:*`;
+      patterns.push({ ds, pid });
+      multi.keys(pattern);
+    }
+  }
+
+  // 2) Execute all the KEYS calls in one shot
+  //    results is an array of key‑lists, in the same order
+  const keyLists = await multi.exec(); // [ [keysForPattern1], [keysForPattern2], … ]
+
+  // 3) Flatten out all the individual keys for the second pipeline
+  const allKeys = keyLists.flat();
+  const keyToIndex = [];
+  keyLists.forEach((keys, idx) => {
+    for (const key of keys) {
+      keyToIndex.push(idx);  // record which (ds, pid) this key belongs to
+    }
+  });
+
+  // 4) Build a second multi that GETs (or JSON.GETs) each key’s value
+  const multi2 = redis.multi();
+  for (const key of allKeys) {
+    // Replace .get with .jsonGet if you’re storing JSON
+    multi2.get(key);
+  }
+  const values = await multi2.exec();  // array of string results
+
+  // 5) Assemble the nested object
+  const questionsByDsUser = {};
+  dsIDs.forEach(ds => (questionsByDsUser[ds] = {}));
+  patterns.forEach(({ ds, pid }, patternIdx) => {
+    questionsByDsUser[ds][pid] = [];
+  });
+
+  // Walk each returned value → put into the right ds/pid bucket
+  values.forEach((val, i) => {
+    const patternIdx = keyToIndex[i];
+    const { ds, pid } = patterns[patternIdx];
+    questionsByDsUser[ds][pid].push(val);
+  });
+
+  return questionsByDsUser;
+}
+
+async function fetchAllQuestions(dsIDs){
+  const pipeline = redis.multi();
+  for (const ds of dsIDs) {
+    pipeline.sMembers(`v1:datasets:${ds}`);
+  }
+  const results = await pipeline.exec();
+
+  const questionsByDs = {};
+  for (let i = 0; i < dsIDs.length; i++) {
+    questionsByDs[dsIDs[i]] = results[i];
+  }
+  return questionsByDs;
+}
+
 async function fetchAllAssignments(dsIDs) {
   // 1) build the pipeline
   const pipeline = redis.multi();
@@ -457,63 +523,41 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   const accuracyArr = await Promise.all(accPromises);
 
   const membersByDs = await fetchAllAssignments(dsIDs);
+  const questionsByDs = await fetchAllQuestions(dsIDs);
+  const questionsByDsUser = await fetchUserQuestions(dsIDs, membersByDs);
 
   const progArr = [];
   for (const ds of dsIDs){
-    const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
-
+    const total = questionsByDs[ds].length;
     for (const pid of membersByDs[ds]){
-      const pattern = `v1:${pid}:${ds}:*`;
-      let answered = 0, lastTS = null, submitted = false;
-      for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
-          const key = keyBuf.toString();
-          if (key.endsWith(':meta')){
-            submitted = true;
-            continue;
-          }
-          answered++;
+      let answered = questionsByDsUser[ds][pid].length
+      let lastTS = null, submitted = false;
+      for (const question of questionsByDsUser[ds][pid]){
+        const asNum = parseFloat(question);
+        const isNumericFlag = !isNaN(asNum) && asNum >= 0 && asNum <= 1;
 
-          const raw = await redis.get(key);
-          try {
-            const obj = JSON.parse(raw);
-            const ts  = obj.editTimestamp || obj.origTimestamp;
-            if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
-          } catch {}
+        if (question === 'submitted' || isNumericFlag) {
+          submitted = true;
+          continue;
+        }
+
+        // otherwise assume it's your JSON blob
+        try {
+          const obj = JSON.parse(question);
+          const ts  = obj.editTimestamp || obj.origTimestamp;
+          if (ts && (!lastTS || ts > lastTS)) {
+            lastTS = ts;
+          }
+        } catch (e) {
+          console.warn(`Invalid JSON for ${pid}/${ds}:`, question);
+        }
+      }
+      if (submitted){
+        answered--;
       }
       progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
     }
-    //console.log(ds, membersByDs[ds])
   }
-
-  // /* --- per-user, per-dataset progress ----------------------- */
-  // const progArr = [];
-  // for (const pid of users) {
-  //   for (const ds of dsIDs) {
-  //     const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
-  //     if (!assigned) continue;
-
-  //     const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
-
-  //     /* answered count */
-  //     const pattern = `v1:${pid}:${ds}:*`;
-  //     let answered = 0, lastTS = null;
-  //     for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
-  //       const key = keyBuf.toString();
-  //       if (key.endsWith(':meta')) continue;
-  //       answered++;
-
-  //       const raw = await redis.get(key);
-  //       try {
-  //         const obj = JSON.parse(raw);
-  //         const ts  = obj.editTimestamp || obj.origTimestamp;
-  //         if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
-  //       } catch {}
-  //     }
-
-  //     const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
-  //     progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
-  //   }
-  // }
 
   /* ➊ read campaign meta (curIndex, numImages, etc.) */
   const metaRaw = await redis.get(`v1:campaigns:${topic}:meta`);
