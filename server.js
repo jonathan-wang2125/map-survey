@@ -57,6 +57,21 @@ const execFileAsync = promisify(execFile);
  *                                              origTimestamp, editTimestamp, eval }
  */
 
+/* ───────────────  2. APP & REDIS  ───────────── */
+const app = express();
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/maps', express.static(path.join(__dirname, 'maps')));
+
+const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
+
+/* prefix helpers --------------------------------------------------------- */
+const v1            = key => `v1:${key}`;
+const v1Users       = v1('usernames');                // set of pids
+const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
+const v1AssignDb    = ds => v1(`assignments:${ds}`);
+const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
+
 /**
  * Populate DATASETS / DATASET_IDS / DATASETS_MAP from Redis.
  *   – v1:datasets         : SET of dataset IDs
@@ -80,21 +95,6 @@ async function getDatasetMeta(dsID) {
   catch  { return { label: dsID, description: '', topic: ''}; }
 }
 
-/* ───────────────  2. APP & REDIS  ───────────── */
-const app = express();
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/maps', express.static(path.join(__dirname, 'maps')));
-
-const redis = createClient({ url: `redis://localhost:${REDIS_PORT}` });
-
-/* prefix helpers --------------------------------------------------------- */
-const v1            = key => `v1:${key}`;
-const v1Users       = v1('usernames');                // set of pids
-const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
-const v1AssignDb    = ds => v1(`assignments:${ds}`);
-const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
-
 /* ---------- Question normaliser ---------- */
 function normalise(q) {
   // canon-field: uid
@@ -113,6 +113,26 @@ function normalise(q) {
 
 /* ───────────────  3. QUESTIONS CACHE  ───────── */
 const questionsCache = {};
+
+async function fetchAllAssignments(dsIDs) {
+  // 1) build the pipeline
+  const pipeline = redis.multi();
+  for (const ds of dsIDs) {
+    pipeline.sMembers(`v1:assignments:${ds}`);
+  }
+
+  // 2) execute & await the pipeline
+  //    returns an array of [err, result] tuples, one per command
+  const results = await pipeline.exec();
+
+  // 3) map back to a dict keyed by dsID
+  const membersByDs = {};
+  for (let i = 0; i < dsIDs.length; i++) {
+    membersByDs[dsIDs[i]] = results[i];
+  }
+
+  return membersByDs;
+}
 
 /**
  * Return an array of questions for <dsID>.
@@ -415,8 +435,10 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   /* --- all users assigned to *any* dataset in this campaign --- */
   const userSet = new Set();
   for (const ds of dsIDs) {
-    const members = await redis.sMembers(`v1:assignments:${ds}`);
-    members.forEach(u => userSet.add(u));
+    if (ds.endsWith("Accuracy")) {
+      const members = await redis.sMembers(`v1:assignments:${ds}`);
+      members.forEach(u => userSet.add(u));
+    }
   }
   const users = Array.from(userSet);
 
@@ -434,35 +456,64 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   });
   const accuracyArr = await Promise.all(accPromises);
 
-  /* --- per-user, per-dataset progress ----------------------- */
+  const membersByDs = await fetchAllAssignments(dsIDs);
+
   const progArr = [];
-  for (const pid of users) {
-    for (const ds of dsIDs) {
-      const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
-      if (!assigned) continue;
+  for (const ds of dsIDs){
+    const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
 
-      const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
-
-      /* answered count */
+    for (const pid of membersByDs[ds]){
       const pattern = `v1:${pid}:${ds}:*`;
-      let answered = 0, lastTS = null;
+      let answered = 0, lastTS = null, submitted = false;
       for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
-        const key = keyBuf.toString();
-        if (key.endsWith(':meta')) continue;
-        answered++;
+          const key = keyBuf.toString();
+          if (key.endsWith(':meta')){
+            submitted = true;
+            continue;
+          }
+          answered++;
 
-        const raw = await redis.get(key);
-        try {
-          const obj = JSON.parse(raw);
-          const ts  = obj.editTimestamp || obj.origTimestamp;
-          if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
-        } catch {}
+          const raw = await redis.get(key);
+          try {
+            const obj = JSON.parse(raw);
+            const ts  = obj.editTimestamp || obj.origTimestamp;
+            if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
+          } catch {}
       }
-
-      const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
       progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
     }
+    //console.log(ds, membersByDs[ds])
   }
+
+  // /* --- per-user, per-dataset progress ----------------------- */
+  // const progArr = [];
+  // for (const pid of users) {
+  //   for (const ds of dsIDs) {
+  //     const assigned = await redis.sIsMember(`v1:assignments:${ds}`, pid);
+  //     if (!assigned) continue;
+
+  //     const total = (await redis.sMembers(`v1:datasets:${ds}`)).length;
+
+  //     /* answered count */
+  //     const pattern = `v1:${pid}:${ds}:*`;
+  //     let answered = 0, lastTS = null;
+  //     for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
+  //       const key = keyBuf.toString();
+  //       if (key.endsWith(':meta')) continue;
+  //       answered++;
+
+  //       const raw = await redis.get(key);
+  //       try {
+  //         const obj = JSON.parse(raw);
+  //         const ts  = obj.editTimestamp || obj.origTimestamp;
+  //         if (ts && (!lastTS || ts > lastTS)) lastTS = ts;
+  //       } catch {}
+  //     }
+
+  //     const submitted = await redis.exists(`v1:${pid}:${ds}:meta`) === 1;
+  //     progArr.push({ pid, dataset: ds, answered, total, lastTS, submitted });
+  //   }
+  // }
 
   /* ➊ read campaign meta (curIndex, numImages, etc.) */
   const metaRaw = await redis.get(`v1:campaigns:${topic}:meta`);
