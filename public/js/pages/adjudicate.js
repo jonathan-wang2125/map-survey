@@ -60,9 +60,21 @@ export const adjudicate = {
         editBtn.style.display = on ? '' : 'none';
       };
 
-      u1Btn.addEventListener('click', async () => { await this.judge(r,'1',reasonBox.value); lock(true); });
-      u2Btn.addEventListener('click', async () => { await this.judge(r,'2',reasonBox.value); lock(true); });
-      rejBtn.addEventListener('click', async () => { await this.judge(r,'reject',reasonBox.value); lock(true); });
+      u1Btn.addEventListener('click', async () => {
+        await this.judge(r,'1',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
+      u2Btn.addEventListener('click', async () => {
+        await this.judge(r,'2',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
+      rejBtn.addEventListener('click', async () => {
+        await this.judge(r,'reject',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
       editBtn.addEventListener('click', () => lock(false));
 
       cancelBtn.addEventListener('click', async () => {
@@ -88,7 +100,7 @@ export const adjudicate = {
         ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
         <p><strong>User 1 Answer:</strong> ${r.answer}</p>
         <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
-        <p><em>Adjudicated: ${r.adjudication}</em></p>
+        <span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>
 
         <textarea rows="2" placeholder="Reasoning…" style="width:100%;margin-top:.5rem;resize:vertical;">${r.adjudication_reason ?? ''}</textarea>
         <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
@@ -112,9 +124,21 @@ export const adjudicate = {
 
       lock(true); // start locked
 
-      u1Btn.addEventListener('click', async () => { await this.judge(r,'1',reasonBox.value); lock(true); });
-      u2Btn.addEventListener('click', async () => { await this.judge(r,'2',reasonBox.value); lock(true); });
-      rejBtn.addEventListener('click', async () => { await this.judge(r,'reject',reasonBox.value); lock(true); });
+      u1Btn.addEventListener('click', async () => {
+        await this.judge(r,'1',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
+      u2Btn.addEventListener('click', async () => {
+        await this.judge(r,'2',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
+      rejBtn.addEventListener('click', async () => {
+        await this.judge(r,'reject',reasonBox.value,labelBox.value);
+        lock(true);
+        await this.load();
+      });
       editBtn.addEventListener('click', () => lock(false));
 
       pastCont.appendChild(card);
