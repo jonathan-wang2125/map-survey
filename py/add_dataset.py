@@ -101,9 +101,9 @@ def main(ds_id: str, topic: str, jsonl_file: Path) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        ds_id = "TestTraining"
-        topic = "Test"
-        jsonl = Path("/storage/cmarnold/projects/maps/labeldata/mapqa/TestTraining_1.jsonl")
+        ds_id = "NaturalWorldTraining"
+        topic = "Natural World"
+        jsonl = Path("/storage/cmarnold/projects/maps/labeldata/mapqa/NaturalWorldTraining_20.jsonl")
     elif len(sys.argv) != 4:
         sys.exit("usage: add_dataset_to_redis.py <topic> <index:int> <jsonl_path>")
     else:

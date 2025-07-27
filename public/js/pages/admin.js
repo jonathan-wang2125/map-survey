@@ -175,3 +175,5 @@ export const admin = {
       document.querySelector(`${cellSel}[data-id="${dsID}"]`).textContent = newVal;
     }
 }
+
+window.admin = admin
