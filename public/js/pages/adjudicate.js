@@ -25,6 +25,7 @@ export const adjudicate = {
     const pastList = pastResp.ok ? await pastResp.json() : [];
 
     container.innerHTML = '';
+    pastCont.innerHTML = '';
     if (!list.length) { status.textContent = 'No pending requests.'; } else { status.textContent = ''; }
     
     for (const r of list) {
@@ -101,6 +102,11 @@ export const adjudicate = {
         <p><strong>User 1 Answer:</strong> ${r.answer}</p>
         <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
         <span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>
+
+        <label style="display:block;margin-top:.25rem;">
+          Final Label:
+          <input type="text" class="labelBox" value="${r.adjudicator_label ?? ''}" style="width:100%;">
+        </label>
 
         <textarea rows="2" placeholder="Reasoning…" style="width:100%;margin-top:.5rem;resize:vertical;">${r.adjudication_reason ?? ''}</textarea>
         <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
