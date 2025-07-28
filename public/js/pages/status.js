@@ -5,7 +5,7 @@ export const status = {
     async init () {
       Common.initNavbar();
   
-      const topics = ['Military', 'NaturalWorld', 'Urban', 'Aviation', 'Test']; // extend as needed
+      const topics = ['NaturalWorld','Military', 'Urban', 'Aviation', 'Test']; // extend as needed
       const statusBox = document.getElementById('status');              // lives in the **first** container
       statusBox.textContent = 'Loading…';
   
@@ -44,8 +44,32 @@ export const status = {
         // header
         const h = document.createElement('h2');
         h.textContent = `${topic} Campaign`;
+         container.append(h);
+
+
+        // 1) Create the collapse button
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'campaign-toggle-btn';
+        toggleBtn.textContent = '∨';
+       
+
+        // 2) Append it to your header
+        h.appendChild(toggleBtn);
         container.append(h);
 
+        // 3) Now wire up a single click handler
+        toggleBtn.addEventListener('click', () => {
+          // toggle the 'collapsed' class exactly once
+          const isCollapsed = container.classList.toggle('collapsed');
+
+          // update the button label
+          toggleBtn.textContent = isCollapsed ? '∧' : '∨';
+
+          // hide or show every table in this container
+          container.querySelectorAll('table').forEach(tbl => {
+            tbl.style.display = isCollapsed ? 'none' : '';
+          });
+        });
         // campaign metadata
         if (data.meta) {
           const p = document.createElement('p');

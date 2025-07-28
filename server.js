@@ -793,6 +793,47 @@ app.get('/qresponses/:pid', async (req, res) => {
   res.json({ responses: out });
 });
 
+// GET /user_datasets_summary/:pid
+// returns [{ id, submitted, accuracy, hasResponses }, …] for all datasets assigned to pid
+app.get('/user_datasets_summary/:pid', async (req, res) => {
+  const pid = req.params.pid;
+
+  // 1) what datasets does this user have?
+  const dsIDs = await redis.sMembers(v1AssignUser(pid));
+
+  // 2) pipeline to check submission-flag and to get the meta value
+  const pipe = redis.multi();
+  for (const ds of dsIDs) {
+    pipe.exists(`v1:${pid}:${ds}:meta`);  // -> 1 if submitted
+    pipe.get   (`v1:${pid}:${ds}:meta`);  // -> raw accuracy or flag
+  }
+  const results = await pipe.exec();  // [ exists1, meta1, exists2, meta2, … ]
+
+  // 3) build up a map id -> { submitted, accuracy }
+  const summary = {};
+  for (let i = 0; i < dsIDs.length; i++) {
+    const exists    = results[2*i];
+    const rawMeta   = results[2*i + 1];
+    const submitted = exists === 1;
+    const accuracy  = submitted && !isNaN(Number(rawMeta))
+                      ? Number(rawMeta)
+                      : null;
+    summary[dsIDs[i]] = { submitted, accuracy, hasResponses: false };
+  }
+
+  // 4) single SCAN over all this user’s answer keys to flag any past answers
+  for await (const key of redis.scanIterator({ MATCH: `v1:${pid}:*:*` })) {
+    if (key.endsWith(':meta')) continue;        // skip the “…:meta” keys
+    const parts = key.split(':');               // ["v1","<pid>","<ds>","<uid>"]
+    const ds    = parts[2];
+    if (summary[ds]) summary[ds].hasResponses = true;
+  }
+
+  // 5) turn it into an array and send
+  const datasets = dsIDs.map(id => ({ id, ...summary[id] }));
+  res.json({ datasets });
+});
+
 /* edit an existing answer */
 app.post('/edit_qresponse/:pid', async (req, res) => {
   const { pid } = req.params;
