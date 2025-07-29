@@ -114,7 +114,7 @@ def main(ds: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        ds_id = "Natural World_0"
+        ds_id = "NaturalWorld_1"
     elif len(sys.argv) != 2:
         sys.exit("usage: delete_dataset.py <dataset-id>")
     else:
