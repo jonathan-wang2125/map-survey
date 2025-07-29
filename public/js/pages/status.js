@@ -44,7 +44,7 @@ export const status = {
         // header
         const h = document.createElement('h2');
         h.textContent = `${topic} Campaign`;
-         container.append(h);
+        container.append(h);
 
 
         // 1) Create the collapse button
@@ -178,6 +178,13 @@ export const status = {
           });
 
         // append to document
+        if (topic != 'NaturalWorld'){
+          container.classList.add('collapsed');             // default to collapsed
+          toggleBtn.textContent = '∧';                      // show "expand" icon
+          container.querySelectorAll('table').forEach(tbl => {
+            tbl.style.display = 'none';                     // hide all tables by default
+          });
+        }
         document.body.appendChild(container);
       });
   
