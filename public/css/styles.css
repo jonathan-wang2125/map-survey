@@ -556,3 +556,17 @@ nav.navbar .welcome .nav-user {
   min-width: 6em;
   line-height: 1.2;
 }
+
+
+.container.collapsed .content {
+  display: none;
+}
+.container h2 button {
+  position: absolute;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.5rem;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+
+
