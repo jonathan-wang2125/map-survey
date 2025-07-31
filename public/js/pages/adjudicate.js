@@ -37,9 +37,12 @@ export const adjudicate = {
         ${r.otherPid ? `<p><strong>User 2:</strong> ${r.otherPid}</p>` : ''}
         <p><strong>Dataset:</strong> ${r.dataset}</p>
         <p><strong>Q:</strong> ${r.question}</p>
-        ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}        <p><strong>User 1 Answer:</strong> ${r.answer}</p>
+        ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
+        <p><strong>User 1 Answer:</strong> ${r.answer}</p>
+        <p><strong>User 1 Needs Rephrasing:</strong> ${r.badQuestion ? 'Yes' : 'No'}</p>
+        ${r.badQuestion ? `<p><strong>User 1 Rephrase:</strong> ${r.badReason}</p>` : ''}
         <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
-        
+        ${r.otherPid ? `<p><strong>User 2 Needs Rephrasing:</strong> ${r.otherBadQuestion ? 'Yes' : 'No'}</p>${r.otherBadQuestion ? `<p><strong>User 2 Rephrase:</strong> ${r.otherBadReason}</p>` : ''}` : ''}
         <label style="display:block;margin-top:.25rem;">
           Final Label:
           <input type="text" class="labelBox" value="${r.adjudicator_label ?? ''}" style="width:100%;">
@@ -106,7 +109,10 @@ export const adjudicate = {
         <p><strong>Q:</strong> ${r.question}</p>
         ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
         <p><strong>User 1 Answer:</strong> ${r.answer}</p>
+        <p><strong>User 1 Needs Rephrasing:</strong> ${r.badQuestion ? 'Yes' : 'No'}</p>
+        ${r.badQuestion ? `<p><strong>User 1 Rephrase:</strong> ${r.badReason}</p>` : ''}
         <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
+        ${r.otherPid ? `<p><strong>User 2 Needs Rephrasing:</strong> ${r.otherBadQuestion ? 'Yes' : 'No'}</p>${r.otherBadQuestion ? `<p><strong>User 2 Rephrase:</strong> ${r.otherBadReason}</p>` : ''}` : ''}
         <span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>
 
         <label style="display:block;margin-top:.25rem;">

@@ -794,15 +794,20 @@ app.get('/adjudications', async (req, res) => {
     const [pid, dataset, uid] = id.split(':');
     if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
       continue;
-    const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
-    const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    const ansRaw   = await redis.get(`v1:${pid}:${dataset}:${uid}`);
+    const qRaw     = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    let otherRaw   = null;
     let answer = '', otherAnswer = '', question = '', label = '', mapFile = '';
+    let badQuestion = false, badReason = '';
+    let otherBadQuestion = false, otherBadReason = '';
     let adjudicator_label = '';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
         answer = obj.answer || '';
         otherAnswer = obj.nonconcurred_response || '';
+        badQuestion = !!obj.badQuestion;
+        badReason = obj.badReason || '';
         adjudicator_label = obj.adjudicator_label || '';
       }
     } catch {}
@@ -819,10 +824,21 @@ app.get('/adjudications', async (req, res) => {
     try {
       const assigned = await getAssigned(dataset);
       otherPid = assigned.find(p => p !== pid) || null;
+      if (otherPid) {
+        otherRaw = await redis.get(`v1:${otherPid}:${dataset}:${uid}`);
+        if (otherRaw) {
+          try {
+            const objO = JSON.parse(otherRaw.toString());
+            otherBadQuestion = !!objO.badQuestion;
+            otherBadReason = objO.badReason || '';
+          } catch {}
+        }
+      }
     } catch {}
 
-    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile, adjudicator_label });  }
-  res.json(out);
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile,
+      adjudicator_label, badQuestion, badReason, otherBadQuestion, otherBadReason });
+  }  res.json(out);
 });
 
 // List previously resolved adjudications
@@ -834,9 +850,12 @@ app.get('/past_adjudications', async (req, res) => {
   const out = [];
   for (const id of ids) {
     const [pid, dataset, uid] = id.split(':');
-    const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
-    const qRaw  = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    const ansRaw  = await redis.get(`v1:${pid}:${dataset}:${uid}`);
+    const qRaw    = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    let otherRaw  = null;
     let answer='', otherAnswer='', question='', label='', mapFile='';
+    let badQuestion = false, badReason = '';
+    let otherBadQuestion = false, otherBadReason = '';
     let adjudication='', adjudication_reason='';
     let adjudicator_label='';
     try {
@@ -844,6 +863,8 @@ app.get('/past_adjudications', async (req, res) => {
         const obj = JSON.parse(ansRaw.toString());
         answer = obj.answer || '';
         otherAnswer = obj.nonconcurred_response || '';
+        badQuestion = !!obj.badQuestion;
+        badReason = obj.badReason || '';
         adjudication = obj.adjudication || '';
         adjudication_reason = obj.adjudication_reason || '';
         adjudicator_label = obj.adjudicator_label || '';
@@ -861,9 +882,20 @@ app.get('/past_adjudications', async (req, res) => {
     try {
       const assigned = await getAssigned(dataset);
       otherPid = assigned.find(p => p !== pid) || null;
+      if (otherPid) {
+        otherRaw = await redis.get(`v1:${otherPid}:${dataset}:${uid}`);
+        if (otherRaw) {
+          try {
+            const objO = JSON.parse(otherRaw.toString());
+            otherBadQuestion = !!objO.badQuestion;
+            otherBadReason = objO.badReason || '';
+          } catch {}
+        }
+      }
     } catch {}
     out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label,
-      mapFile, adjudication, adjudication_reason, adjudicator_label });
+      mapFile, adjudication, adjudication_reason, adjudicator_label, badQuestion,
+      badReason, otherBadQuestion, otherBadReason });
   }
   res.json(out);
 });
