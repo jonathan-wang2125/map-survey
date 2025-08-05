@@ -20,7 +20,7 @@ const sharp         = require('sharp');
 const { execFile }  = require('child_process');
 const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
 const { get } = require('http');
-
+const { scheduleAdjudicationExport } = require('./exportAdjudications');
 const ADJUDICATION_PASSCODE = 'letmein';
 
 /* ───────────────  1. DATASETS  ─────────────── */
@@ -1141,5 +1141,6 @@ app.get('/export_responses/:pid/:ds', async (req, res) => {
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
+  scheduleAdjudicationExport(redis);
   app.listen(PORT, () => console.log(`Started server on http://localhost:${PORT}`));
 })();
