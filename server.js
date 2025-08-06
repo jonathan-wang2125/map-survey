@@ -339,7 +339,7 @@ async function getNextDataset (pid, currentDs) {
     }
 
     let index = meta.curIndex++;
-    
+
     // REMOVE THIS CODE -- TEMP FIX
     if (index === 2 || index === 3){
       index = 4;
