@@ -1198,9 +1198,51 @@ app.get('/export_responses/:pid/:ds', async (req, res) => {
   }
 });
 
+async function exportAdjudicatedData() {
+  const ids = await redis.sMembers('v1:past_adjudications');
+  const byDataset = {};
+  for (const id of ids) {
+    const [pid, dataset, uid] = id.split(':');
+    const raw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
+    if (!raw) continue;
+    let obj;
+    try { obj = JSON.parse(raw.toString()); }
+    catch { continue; }
+    obj.prolificID = pid;
+    obj.dataset = dataset;
+    obj.uid = uid;
+    (byDataset[dataset] ||= []).push(obj);
+  }
+  const outDir = path.resolve(__dirname, '../maps/survey-responses/adjudicated');
+  await fs.promises.mkdir(outDir, { recursive: true });
+  for (const [dataset, records] of Object.entries(byDataset)) {
+    const file = path.join(outDir, `${dataset}.jsonl`);
+    const contents = records.map(r => JSON.stringify(r)).join('\n') + '\n';
+    await fs.promises.writeFile(file, contents);
+  }
+}
+
+function scheduleDailyExport() {
+  const now = new Date();
+  const nowNY = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const targetNY = new Date(nowNY);
+  targetNY.setHours(5, 0, 0, 0);
+  if (nowNY > targetNY) targetNY.setDate(targetNY.getDate() + 1);
+  const delay = targetNY - nowNY;
+  setTimeout(async () => {
+    try {
+      await exportAdjudicatedData();
+    } catch (err) {
+      console.error('exportAdjudicatedData failed:', err);
+    }
+    scheduleDailyExport();
+  }, delay);
+}
+
 /* ───────────────  6. BOOT  ───────────────────── */
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
+  scheduleDailyExport();
   app.listen(PORT, () => console.log(`Started server on http://localhost:${PORT}`));
 })();
