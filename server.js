@@ -18,6 +18,7 @@ const bodyParser    = require('body-parser');
 const { createClient } = require('redis');
 const sharp         = require('sharp');
 const { execFile }  = require('child_process');
+const { randomUUID } = require('crypto');
 const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
 const { get } = require('http');
 // const { scheduleAdjudicationExport } = require('./exportAdjudications');
@@ -798,9 +799,13 @@ app.get('/adjudications', async (req, res) => {
     const qRaw     = await redis.get(`v1:datasets:${dataset}:${uid}`);
     let otherRaw   = null;
     let answer = '', otherAnswer = '', question = '', label = '', mapFile = '';
+<<<<<<< Updated upstream
     let badQuestion = false, badReason = '';
     let otherBadQuestion = false, otherBadReason = '';
     let adjudicator_label = '';
+=======
+    let adjudicator_label = '', badReason = '', otherBadReason = '';
+>>>>>>> Stashed changes
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
@@ -809,6 +814,7 @@ app.get('/adjudications', async (req, res) => {
         badQuestion = !!obj.badQuestion;
         badReason = obj.badReason || '';
         adjudicator_label = obj.adjudicator_label || '';
+        badReason = obj.badReason || '';
       }
     } catch {}
     try {
@@ -835,10 +841,26 @@ app.get('/adjudications', async (req, res) => {
         }
       }
     } catch {}
+    if (otherPid) {
+      try {
+        const otherRaw = await redis.get(`v1:${otherPid}:${dataset}:${uid}`);
+        if (otherRaw) {
+          const obj2 = JSON.parse(otherRaw.toString());
+          if (!otherAnswer) otherAnswer = obj2.answer || '';
+          otherBadReason = obj2.badReason || '';
+        }
+      } catch {}
+    }
 
+<<<<<<< Updated upstream
     out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile,
       adjudicator_label, badQuestion, badReason, otherBadQuestion, otherBadReason });
   }  res.json(out);
+=======
+    out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label, mapFile, adjudicator_label, badReason, otherBadReason });
+  }
+  res.json(out);
+>>>>>>> Stashed changes
 });
 
 // List previously resolved adjudications
@@ -857,7 +879,7 @@ app.get('/past_adjudications', async (req, res) => {
     let badQuestion = false, badReason = '';
     let otherBadQuestion = false, otherBadReason = '';
     let adjudication='', adjudication_reason='';
-    let adjudicator_label='';
+    let adjudicator_label='', badReason='', otherBadReason='';
     try {
       if (ansRaw) {
         const obj = JSON.parse(ansRaw.toString());
@@ -868,6 +890,7 @@ app.get('/past_adjudications', async (req, res) => {
         adjudication = obj.adjudication || '';
         adjudication_reason = obj.adjudication_reason || '';
         adjudicator_label = obj.adjudicator_label || '';
+        badReason = obj.badReason || '';
       }
     } catch {}
     try {
@@ -893,9 +916,23 @@ app.get('/past_adjudications', async (req, res) => {
         }
       }
     } catch {}
+    if (otherPid) {
+      try {
+        const otherRaw = await redis.get(`v1:${otherPid}:${dataset}:${uid}`);
+        if (otherRaw) {
+          const obj2 = JSON.parse(otherRaw.toString());
+          if (!otherAnswer) otherAnswer = obj2.answer || '';
+          otherBadReason = obj2.badReason || '';
+        }
+      } catch {}
+    }
     out.push({ pid, otherPid, dataset, uid, question, answer, otherAnswer, label,
+<<<<<<< Updated upstream
       mapFile, adjudication, adjudication_reason, adjudicator_label, badQuestion,
       badReason, otherBadQuestion, otherBadReason });
+=======
+       mapFile, adjudication, adjudication_reason, adjudicator_label, badReason, otherBadReason });
+>>>>>>> Stashed changes
   }
   res.json(out);
 });
@@ -906,7 +943,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (req.query.code !== ADJUDICATION_PASSCODE)
     return res.status(403).json({ error: 'forbidden' });
 
-  const { pid, dataset, uid, choice, reason, label } = req.body || {};
+  const { pid, dataset, uid, choice, reason, label, newQuestion } = req.body || {};
   if (!pid || !dataset || !uid || !choice)
     return res.status(400).json({ error: 'missing fields' });
 
@@ -917,6 +954,14 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   try {
     const assigned = await getAssigned(dataset);
     otherPid = assigned.find(p => p !== pid) || null;
+  } catch {}
+  let mapFile = '';
+  try {
+    const qRaw = await redis.get(`v1:datasets:${dataset}:${uid}`);
+    if (qRaw) {
+      const qObj = JSON.parse(qRaw.toString());
+      mapFile = qObj.Map || qObj.map || '';
+    }
   } catch {}
 
   const key1 = `v1:${pid}:${dataset}:${uid}`;
@@ -954,6 +999,32 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   await redis.sAdd('v1:past_adjudications', `${pid}:${dataset}:${uid}`);
 
   await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
+   if (newQuestion && newQuestion.trim()) {
+    try {
+      const { topic } = await getDatasetMeta(dataset);
+      const cat = topic || 'General';
+      const prefix = `${cat}QuestionsRephrased`;
+      const idx = await redis.incr(`v1:${prefix}:idx`);
+      const newDsId = `${prefix}_${idx}`;
+      const newLabel = `${cat} Questions Rephrased ${idx}`;
+
+      await redis.sAdd('v1:datasets', newDsId);
+      await redis.set(`v1:datasets:${newDsId}:meta`, JSON.stringify({ label: newLabel, topic: cat }));
+      addDatasetToGlobals(newDsId, newLabel);
+
+      const newUid = randomUUID();
+      await redis.sAdd(`v1:datasets:${newDsId}`, newUid);
+      await redis.set(`v1:datasets:${newDsId}:${newUid}`, JSON.stringify({
+        uid: newUid,
+        Question: newQuestion,
+        Map: mapFile,
+        sourceDataset: dataset,
+        sourceUid: uid
+      }));
+    } catch (err) {
+      console.error('Failed to create rephrased question dataset', err);
+    }
+  }
   res.json({ ok: true });
 });
 
