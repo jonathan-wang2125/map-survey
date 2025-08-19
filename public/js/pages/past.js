@@ -1,98 +1,84 @@
 import { Common } from '../common/common.js';
 
 export const past = {
-    async init () {
-      Common.ensureLogin();
-      Common.initNavbar();
-      if (!Common.ds()) location.href = '/select_dataset.html';
+  async init () {
+    Common.ensureLogin();
+    Common.initNavbar();
+    if (!Common.ds()) location.href = '/select_dataset.html';
 
-      const pid = Common.pid();
-      const ds  = Common.ds();
-      const { submitted } = await fetch(
-        `/dataset_submission/${pid}/${ds}`
-      ).then(r => r.json());
+    const pid = Common.pid();
+    const ds  = Common.ds();
 
-      const wrap = document.getElementById('answersList');
-      wrap.textContent = 'Loading…';
+    const { submitted } = await fetch(
+      `/dataset_submission/${pid}/${ds}`
+    ).then(r => r.json());
 
-      const rsp = await fetch(
-        `/qresponses/${Common.pid()}?dataset=${encodeURIComponent(Common.ds())}`
-      );
-      if (!rsp.ok) { 
-        wrap.textContent = 'Server error – try again later.'; 
-        return; 
-      }
+    const wrap = document.getElementById('answersList');
+    wrap.textContent = 'Loading…';
 
-      const { responses } = await rsp.json();
-      if (!responses.length) { 
-        wrap.textContent = 'No answers yet.'; 
-        return; 
-      }
+    const rsp = await fetch(
+      `/qresponses/${pid}?dataset=${encodeURIComponent(ds)}`
+    );
+    if (!rsp.ok) { 
+      wrap.textContent = 'Server error – try again later.'; 
+      return; 
+    }
 
-      // Clear and then insert the filter button
-      wrap.innerHTML = '';
+    const { responses } = await rsp.json();
+    if (!responses.length) { 
+      wrap.textContent = 'No answers yet.'; 
+      return; 
+    }
 
-      // 1) Create the filter toggle button
-      const filterBtn = document.createElement('button');
-      filterBtn.id = 'filterIncorrectBtn';
-      filterBtn.textContent = 'Show Incorrect Only';
-      filterBtn.style.marginBottom = '1rem';
-      wrap.appendChild(filterBtn);
+    // Clear & insert filter button + cards container
+    wrap.innerHTML = '';
+    const filterBtn = document.createElement('button');
+    filterBtn.id = 'filterIncorrectBtn';
+    filterBtn.textContent = 'Show Incorrect Only';
+    filterBtn.style.marginBottom = '1rem';
+    wrap.appendChild(filterBtn);
 
-      // 2) Create a container for all cards
-      const cardsContainer = document.createElement('div');
-      cardsContainer.id = 'cardsContainer';
-      wrap.appendChild(cardsContainer);
+    const cardsContainer = document.createElement('div');
+    cardsContainer.id = 'cardsContainer';
+    wrap.appendChild(cardsContainer);
 
-      // 3) Boolean tracking whether filter is on
-      let filterOn = false;
+    // 🔹 Parallel-fetch **all** question JSONs
+    const questionPromises = responses.map(r =>
+      fetch(
+        `/get_question_by_uid?dataset=${encodeURIComponent(ds)}&uid=${encodeURIComponent(r.uid)}`
+      )
+      .then(qr => qr.ok ? qr.json() : null)
+      .catch(() => null)
+    );
+    const questionJSONs = await Promise.all(questionPromises);
 
-      // 4) When the button is clicked, toggle filter
-      filterBtn.addEventListener('click', () => {
-        filterOn = !filterOn;
-        filterBtn.textContent = filterOn 
-          ? 'Show All Answers' 
-          : 'Show Incorrect Only';
+    // 3) filter toggle logic (unchanged)…
+    let filterOn = false;
+    filterBtn.addEventListener('click', () => {
+      filterOn = !filterOn;
+      filterBtn.textContent = filterOn 
+        ? 'Show All Answers' 
+        : 'Show Incorrect Only';
 
-        // Show/hide cards based on their data-eval attribute
-        const allCards = cardsContainer.querySelectorAll('.answer-card');
-        allCards.forEach(card => {
-          const evalVal = card.getAttribute('data-eval');
-          if (filterOn) {
-            // if filtering: hide any card that is not "Incorrect"
-            if (evalVal !== 'Incorrect') {
-              card.style.display = 'none';
-            }
-          } else {
-            // if not filtering: show all cards
-            card.style.display = '';
-          }
-        });
+      cardsContainer.querySelectorAll('.answer-card').forEach(card => {
+        const evalVal = card.getAttribute('data-eval');
+        card.style.display = (!filterOn || evalVal === 'Incorrect') 
+          ? '' : 'none';
       });
+    });
 
-      // 5) Now build each card inside cardsContainer
-      for (const r of responses) {
-        // (a) Attempt to load the stored question JSON (to get its Label)
-        let questionJSON = null;
-        try {
-          const qobj = await fetch(
-            `/get_question_by_uid?dataset=${encodeURIComponent(ds)}&uid=${encodeURIComponent(r.uid)}`
-          );
-          if (qobj.ok) {
-            questionJSON = await qobj.json();
-          } else {
-            console.warn(`Could not fetch question ${r.uid}: ${qobj.status}`);
-          }
-        } catch (e) {
-          console.warn(`Error fetching question ${r.uid}:`, e);
-        }
+    // 4) build cards using the pre‐fetched questionJSONs
+    responses.forEach((r, idx) => {
+      const questionJSON = questionJSONs[idx];
+      const correctLabel = questionJSON?.Label 
+        ?? r.nonconcurred_response 
+        ?? '';
 
-        // If for some reason we didn’t get a Label, fall back to an empty string
-        const correctLabel = questionJSON?.Label ?? r.nonconcurred_response ?? '';
+      const card = document.createElement('div');
+      card.className = 'answer-card';
+      card.setAttribute('data-eval', r.llm_eval);
 
-        // Create the card
-        const card = document.createElement('div');
-        card.className = 'answer-card';
+       
 
         // IMPORTANT: set data-eval so the filter can read it
         card.setAttribute('data-eval', r.llm_eval);
@@ -244,6 +230,6 @@ export const past = {
 
         // Append the card into cardsContainer (not directly into wrap)
         cardsContainer.appendChild(card);
-      }
+      });
     }
-  }
+  };

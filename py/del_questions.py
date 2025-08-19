@@ -78,16 +78,37 @@ def main(ds: str, uids: list) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        ds_id = "NaturalWorldAccuracy"
-        uids = ['6d70fc39-7e2a-4e99-90e2-dd27b7d490ae',
-                '72be3576-56a8-4ce2-ba49-edffe6bcc877',
-                '8cc51377-656d-462d-a632-48f476a678df',
-                'a01fbfff-f9bb-4722-9f81-088cf36877d9',
-                'a70ba896-7215-4e3b-b1db-545c5a850b41',
-                'b10f8961-be22-4d47-a0fd-93603117bee5',
-                'eedd5993-29fb-4687-9a5e-b0f245b9cbdf',
-                'f10029c3-1cf4-4f4e-9e5b-bbec9e8c28c5',
-                'f357ca08-9ec6-47b4-a336-21de2fd3f970'
+        ds_id = "NaturalWorld_4"
+        uids = ["761f792a-7953-47b3-96c0-3f1d87b83f24",
+"6bc5578d-4fe9-4329-9af8-4a500be91e9d",
+"90cc430f-1dcb-46fe-9283-15b57d7207e1",
+"42aaeb52-bb74-45bf-8aee-8831bddfcf96",
+"9bb3734a-4709-4d52-a29a-f7cf19eb5a3a",
+"fd44daa8-5691-46e2-b42a-7e821ed8ae86",
+"cf5bcec0-40ab-4138-9bc9-5c84c5091995",
+"39b122dd-0c30-459b-9ce0-2bdf36742c4e",
+"be92040a-2116-4dac-806f-27676677cf90",
+"47603095-79ce-4504-925f-d453c74c3bb3",
+"4191b1f4-a168-41b8-805a-65f0a869ba80",
+"9549372d-9e90-4559-87dd-5f7a946595b0",
+"eaf9bade-57cc-46bb-acee-7ea073e9d5d5",
+"34f8d897-4f66-4c42-a3e2-c5dc51090618",
+"7a75371b-5b9e-4e1f-a531-c7a5f205273a",
+"90fca476-0651-4b40-9183-609e6b862889",
+"00b575d3-7a84-43a9-aaf4-f44822821b20",
+"6b783223-0c11-477b-bbe4-9fc87c69372f",
+"27566716-3243-43f0-bbc2-a8b0eaa1b0e8",
+"cf2523ac-36d2-44a5-ae50-80a38691cf06",
+"289c472b-7488-43a6-9707-f7b0835adae1",
+"bdd34cee-9c00-442a-9cfc-046d6f68e00d",
+"f62b31d3-c578-4c6a-8d37-b7dcc481282e",
+"92b3cea3-a6eb-4258-8959-7d7c4001b73e",
+"1026831d-6ae3-4382-b284-7e165f3add10",
+"a470c3d6-f985-4190-99ba-9379b1b14612",
+"348916fd-9ea1-49c1-a97a-7c318cfd8e90",
+"a68f26f6-83ed-422c-b0bf-dd25f5be7894",
+"a5e449f6-e750-4c0d-a6b2-69f87fff7d8c",
+"72f0f6cb-9ae0-49f0-8fed-0a82473a3b99",
                 ]
 
     elif len(sys.argv) != 3:

@@ -1,153 +1,126 @@
 import { Common } from '../common/common.js';
 
 export const select = {
-    async init() {
-      Common.ensureLogin();
-      Common.initNavbar();
-  
-      const pid = Common.pid();
-  
-      // 1) load all datasets for this user
-      const datasets = await fetch(`/user_datasets/${pid}`).then(r => r.json());
-      if (!datasets.length) {
-        const msg = document.createElement('p');
-        msg.textContent = 'No datasets have been assigned to your account.';
-        document.body.append(msg);
-        return;
-      }
+  async init() {
+    Common.ensureLogin();
+    Common.initNavbar();
 
-      // 2) batch-fetch submission statuses in parallel
-       const submissionResults = await Promise.all(
-         datasets.map(ds =>
-          fetch(`/dataset_submission/${pid}/${ds.id}`)
-          .then(r => r.json())
-           .then(j => ({ id: ds.id, submitted: j.submitted }))
-         )
+    const pid = Common.pid();
+
+    // 1) load all assigned datasets (unchanged)
+    const datasets = await fetch(`/user_datasets/${pid}`)
+                             .then(r => r.json());
+    if (!datasets.length) {
+      document.body.append(Object.assign(
+        document.createElement('p'),
+        { textContent:'No datasets have been assigned to your account.' }
+      ));
+      return;
+    }
+
+    // 2) load submission / accuracy / hasResponses in one shot
+    const { datasets: summary } = await fetch(`/user_datasets_summary/${pid}`)
+                                      .then(r => r.json());
+    const summaryById = Object.fromEntries(
+      summary.map(d => [d.id, d])
+    );
+
+    // 3) group by topic
+    const byTopic = {};
+    for (const ds of datasets) {
+      const topic = ds.topic || 'Uncategorized';
+      (byTopic[topic] ||= []).push(ds);
+    }
+
+    const topics = ['NaturalWorld', 'Military', 'Urban', 'Aviation', 'Test']; // extend as needed
+
+
+    const orderedTopics = [
+      ...topics.filter(t => t in byTopic),
+      ...Object.keys(byTopic)
+            .filter(t => !topics.includes(t))
+            .sort((a, b) => a.localeCompare(b))
+    ];
+
+    for (const topic of orderedTopics) {
+    const list = byTopic[topic];
+    list.reverse();   // if you still want newest-first per topi
+
+      const container   = document.createElement('div');
+      container.classList.add('container');
+      container.style.position = 'relative';
+
+      // 1) title 
+      const titleEl = document.createElement('h2');
+      titleEl.textContent = topic;
+      container.append(titleEl);
+
+      // cards wrapper
+      const buttonsDiv = document.createElement('div');
+      buttonsDiv.id = 'datasetButtons';
+      buttonsDiv.classList.add('dataset-buttons');
+      container.append(buttonsDiv);
+
+      
+      
+
+      // 4) build each card using the one summaryById lookup
+      for (const ds of list) {
+        const { submitted, accuracy, hasResponses } = summaryById[ds.id] || {};
+
+        const card    = document.createElement('div');
+        card.classList.add('dataset-card');
+        card.append(
+          Object.assign(document.createElement('h3'), { textContent: ds.label })
         );
-        const subsById = Object.fromEntries(
-          submissionResults.map(({ id, submitted }) => [id, submitted])
-     );
-// 3) batch-fetch metadata for those that were submitted
-      const metaResults = await Promise.all(
-        submissionResults
-        .filter(x => x.submitted)
-        .map(x =>
-           fetch(`/dataset_meta/${pid}/${encodeURIComponent(x.id)}`)
-          .then(r => (r.ok ? r.json() : { accuracy: NaN }))
-          .then(j => ({ id: x.id, accuracy: Number(j.accuracy) }))
-        )
-      );
-      const metaById = Object.fromEntries(
-        metaResults.map(({ id, accuracy }) => [id, accuracy])
-        );
-  
-      // 4) group by topic
-      const byTopic = {};
-      for (const ds of datasets) {
-        const topic = ds.topic || 'Uncategorized';
-        (byTopic[topic] ||= []).push(ds);
-      }
-  
-      // 3) for each topic, create a standalone container
-      for (const [topic, list] of Object.entries(byTopic)) {
-        // a) container div under <body>
-        list.reverse();
-        const container = document.createElement('div');
-        container.style.position = 'relative';
-        container.classList.add('container');
 
-        const cardsHolder = document.createElement('div');
-        cardsHolder.classList.add('dataset-buttons');
-        container.append(cardsHolder);
-  
-        // b) topic title
-        const h2 = document.createElement('h2');
-        h2.textContent = topic;
-        container.append(h2);
-  
-        // c) inner buttons wrapper with id="datasetButtons"
-        const buttonsDiv = document.createElement('div');
-        buttonsDiv.id = 'datasetButtons';
-        container.append(buttonsDiv);
-  
-        // d) for each dataset in this topic, build a .dataset-card
-        for (const ds of list) {
-          const submitted = !!subsById[ds.id];
-  
-          // card element
-          const card = document.createElement('div');
-          card.classList.add('dataset-card');
-  
-          // title
-          const h3 = document.createElement('h3');
-          h3.textContent = ds.label;
-          card.append(h3);
-  
-          // annotate button
-          const anno = document.createElement('button');
-          anno.textContent = 'Annotate';
-          anno.onclick = () => {
-            localStorage.setItem('datasetID', ds.id);
-            location.href = 'index.html';
-          };
-  
-          // past answers button
-          const past = document.createElement('button');
-          past.textContent = 'Past answers';
-          past.disabled = true;
-          past.onclick = () => {
-            localStorage.setItem('datasetID', ds.id);
-            location.href = 'past_answers.html';
-          };
-  
-          // status badge
-          const badge = document.createElement('span');
-          badge.classList.add(
-            'status-badge',
-            submitted ? 'complete' : 'incomplete'
-          );
-          badge.textContent = submitted ? 'Submitted' : 'Pending';
-  
-          // actions wrapper
-          const actions = document.createElement('div');
-          actions.classList.add('actions');
-          actions.append(anno, past, badge);
-          card.append(actions);
+        const anno    = Object.assign(document.createElement('button'), { textContent:'Annotate' });
+        anno.onclick  = () => {
+          localStorage.setItem('datasetID', ds.id);
+          location.href = 'index.html';
+        };
 
-              // Render accuracy from our bulk‐fetched metaById (no per‐item fetch)
-          if (submitted) {
-            const acc = metaById[ds.id];
-            if (typeof acc === 'number' && !isNaN(acc)) {
-              const p = document.createElement('p');
-              p.classList.add('accuracy');
-              p.textContent = `Accuracy: ${(acc * 100).toFixed(1)}%`;
-              Object.assign(p.style, {
-                margin: '0.25em 0 0',
-                fontSize: '0.9em',
-                 color: '#555'
-                 });
-                 actions.append(p);
-                  
-                 }
-          }
+        const past    = Object.assign(document.createElement('button'), {
+          textContent: 'Past answers',
+          disabled:    !hasResponses
+        });
+        past.onclick  = () => {
+          localStorage.setItem('datasetID', ds.id);
+          location.href = 'past_answers.html';
+        };
 
-          // enable Past answers if any exist
-          (async () => {
-            const { responses } = await fetch(
-              `/qresponses/${pid}?dataset=${encodeURIComponent(ds.id)}`
-            ).then(r => r.json());
-            if (responses.length) past.disabled = false;
-          })();
-  
-          buttonsDiv.append(card);
+        const badge   = Object.assign(document.createElement('span'), {
+          textContent: submitted ? 'Submitted' : 'Pending'
+        });
+        badge.classList.add('status-badge', submitted ? 'complete' : 'incomplete');
+
+        const actions = document.createElement('div');
+        actions.classList.add('actions');
+        actions.append(anno, past, badge);
+
+        if (submitted && typeof accuracy === 'number') {
+          const p = Object.assign(document.createElement('p'), {
+            className: 'accuracy',
+            textContent: `Accuracy: ${(accuracy*100).toFixed(1)}%`
+          });
+          Object.assign(p.style, {
+            margin: '0.25em 0 0',
+            fontSize: '0.9em',
+            color: '#555'
+          });
+          actions.append(p);
         }
+
+        card.append(actions);
+        buttonsDiv.append(card);
+      }
 
       // …after you’ve built buttonsDiv and all the cards…
 
 // 1) EXPAND/COLLAPSE TOGGLE
 const toggle = document.createElement('button');
 toggle.classList.add('expand-toggle');
-toggle.textContent = 'v';              // open state
+toggle.textContent = '∨';              // open state
 toggle.style.position = 'absolute';
 toggle.style.top      = '0.5em';
 toggle.style.right    = '0.5em';
@@ -156,7 +129,7 @@ let expanded = true;
 toggle.onclick = () => {
   expanded = !expanded;
   buttonsDiv.style.display = expanded ? 'grid' : 'none';
-  toggle.textContent      = expanded ? 'v'    : '>';
+  toggle.textContent      = expanded ? '∨'    : '∧';
 };
 
 // 2) REVERSE-SORT BUTTON
