@@ -37,22 +37,13 @@ export const adjudicate = {
         ${r.otherPid ? `<p><strong>User 2:</strong> ${r.otherPid}</p>` : ''}
         <p><strong>Dataset:</strong> ${r.dataset}</p>
         <p><strong>Q:</strong> ${r.question}</p>
-<<<<<<< Updated upstream
         ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
-        <p><strong>User 1 Answer:</strong> ${r.answer}</p>
-        <p><strong>User 1 Needs Rephrasing:</strong> ${r.badQuestion ? 'Yes' : 'No'}</p>
-        ${r.badQuestion ? `<p><strong>User 1 Rephrase:</strong> ${r.badReason}</p>` : ''}
-        <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
-        ${r.otherPid ? `<p><strong>User 2 Needs Rephrasing:</strong> ${r.otherBadQuestion ? 'Yes' : 'No'}</p>${r.otherBadQuestion ? `<p><strong>User 2 Rephrase:</strong> ${r.otherBadReason}</p>` : ''}` : ''}
-=======
-         ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
         <p><strong>User 1 Answer:</strong> ${r.answer}</p>
         <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
         
         ${r.badReason ? `<p><strong>User 1 Rephrase:</strong> ${r.badReason}</p>` : ''}
         ${r.otherBadReason ? `<p><strong>User 2 Rephrase:</strong> ${r.otherBadReason}</p>` : ''}
 
->>>>>>> Stashed changes
         <label style="display:block;margin-top:.25rem;">
           Final Label:
           <input type="text" class="labelBox" value="${r.adjudicator_label ?? ''}" style="width:100%;">
@@ -82,8 +73,7 @@ export const adjudicate = {
       const labelBox = card.querySelector('.labelBox');
 
       const lock = (on) => {
-         [u1Btn,u2Btn,rejBtn,u1NewBtn,u2NewBtn,rejNewBtn,cancelBtn,reasonBox,labelBox].forEach(el => el.disabled = on);
-        editBtn.style.display = on ? '' : 'none';
+        [u1Btn,u2Btn,rejBtn,u1NewBtn,u2NewBtn,rejNewBtn,cancelBtn,reasonBox,labelBox].forEach(el => el.disabled = on);        editBtn.style.display = on ? '' : 'none';
       };
 
       u1Btn.addEventListener('click', async () => {
@@ -134,7 +124,6 @@ export const adjudicate = {
       card.className = 'answer-card';
 
       card.innerHTML = `
-<<<<<<< Updated upstream
         <p><strong>User 1:</strong> ${r.pid}</p>
         ${r.otherPid ? `<p><strong>User 2:</strong> ${r.otherPid}</p>` : ''}
         <p><strong>Dataset:</strong> ${r.dataset}</p>
@@ -160,27 +149,6 @@ export const adjudicate = {
           <button class="editBtn">Edit</button>
         </div>
       `;
-=======
-          <p><strong>User 1:</strong> ${r.pid}</p>
-          ${r.otherPid ? `<p><strong>User 2:</strong> ${r.otherPid}</p>` : ''}
-          <p><strong>Dataset:</strong> ${r.dataset}</p>
-          <p><strong>Q:</strong> ${r.question}</p>
-          ${r.mapFile ? `<details><summary>Show Map</summary><img src="/maps/${encodeURIComponent(r.mapFile)}" style="max-width:100%;margin:0.5rem 0;"></details>` : ''}
-          <p><strong>User 1 Answer:</strong> ${r.answer}</p>
-          <p><strong>User 2 Answer:</strong> ${r.otherAnswer}</p>
-          ${r.badReason ? `<p><strong>User 1 Rephrase:</strong> ${r.badReason}</p>` : ''}
-          ${r.otherBadReason ? `<p><strong>User 2 Rephrase:</strong> ${r.otherBadReason}</p>` : ''}
-          <span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>
-
-          <textarea rows="2" placeholder="Reasoning…" style="width:100%;margin-top:.5rem;resize:vertical;">${r.adjudication_reason ?? ''}</textarea>
-          <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
-            <button class="u1Btn">User 1</button>
-            <button class="u2Btn">User 2</button>
-            <button class="rejBtn">Reject All Answers</button>
-            <button class="editBtn">Edit</button>
-          </div>
-        `;
->>>>>>> Stashed changes
 
       const u1Btn = card.querySelector('.u1Btn');
       const u2Btn = card.querySelector('.u2Btn');
