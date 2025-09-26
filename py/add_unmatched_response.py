@@ -29,7 +29,8 @@ def main(user_id1: str, user_id2: str, ds_id: str, unmatched_responses: json) ->
         updates[uid] = (new_eval, user1_resp, user2_resp)
 
     if not updates:
-        sys.exit(f"Given json contained no valid update entries.")
+        print(f"Given json contained no valid update entries.")
+        return
 
     # ---------- apply updates via pipeline ----------
     print("Updating Redis entries …")
