@@ -26,7 +26,7 @@ REDIS_URL  = "redis://localhost:6397/0"
 SERVER_URL = "http://localhost:3000"
 BATCH_SIZE = 5_000
 
-def main(ds_id: str, jsonl_file: Path) -> None:
+def main(ds_id: str, jsonl_file: Path, delete=True) -> None:
     ds_set_key   = f"v1:datasets:{ds_id}"
 
     r = redis.Redis.from_url(REDIS_URL, decode_responses=False)
@@ -63,7 +63,8 @@ def main(ds_id: str, jsonl_file: Path) -> None:
         pid = pid.decode() if isinstance(pid, bytes) else pid
         keys_to_del.add(f"v1:{pid}:{ds_id}:meta")
         for uid in uids:
-            keys_to_del.add(f"v1:{pid}:{ds_id}:{uid}")
+            if delete:
+                keys_to_del.add(f"v1:{pid}:{ds_id}:{uid}")
         
         # ── show summary & confirm ----------------------------------------
     print(f"Dataset : {ds_id}")
@@ -92,9 +93,10 @@ def main(ds_id: str, jsonl_file: Path) -> None:
     print(f"Done – {ds_id} updated with {len(entries)} questions.")
 
 if __name__ == "__main__":
+    delete = True
     if len(sys.argv) == 1:
-        ds_id = "NaturalWorldAccuracy"
-        jsonl = Path("/storage/cmarnold/projects/maps/temp.jsonl")
+        ds_id = "UrbanAccuracy"
+        jsonl = Path("/storage/cmarnold/projects/maps/Urban_del_updates.jsonl")
     elif len(sys.argv) != 4:
         sys.exit("usage: add_dataset_to_redis.py <topic> <index:int> <jsonl_path>")
     else:
@@ -103,4 +105,4 @@ if __name__ == "__main__":
         jsonl  = Path(sys.argv[3])
     if not jsonl.exists():
         sys.exit(f"{jsonl} not found")
-    main(ds_id, jsonl)
+    main(ds_id, jsonl, delete)

@@ -360,6 +360,10 @@ async function getNextDataset (pid, currentDs) {
       );
     });
 
+    
+    if (out.includes('skipped')) return 0;
+      // Fail quietly because a dataset could not be generated
+
     let payload;
     try {
       payload = JSON.parse(out);
@@ -371,7 +375,7 @@ async function getNextDataset (pid, currentDs) {
     const metaFromPy = payload.dataset_meta;
     // console.log(payload)
     if (!metaFromPy || !metaFromPy.topic || !Array.isArray(payload.dataset_entries))
-      throw new Error('generator payload missing required fields');
+      throw new Error(`generator payload missing required fields\nreturned: ${out}`);
 
     const questions = payload.dataset_entries; // array of { uid, Question, Map, … }
 
