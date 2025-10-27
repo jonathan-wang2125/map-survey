@@ -351,6 +351,7 @@ async function getNextDataset (pid, currentDs) {
     nextDs      = `${topic}_${index}`;
 
     /* generate dataset via Python */
+    console.log(`Generating ${nextDs}`)
     const out = await new Promise((resolve, reject) => {
       execFile(
         pythonBin,
@@ -361,7 +362,10 @@ async function getNextDataset (pid, currentDs) {
     });
 
     
-    if (out.includes('skipped')) return 0;
+    if (out.includes('skipped')){
+      console.log('CreateDataset python script returned skipped')
+      return 0;
+    }
       // Fail quietly because a dataset could not be generated
 
     let payload;

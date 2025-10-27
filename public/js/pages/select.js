@@ -32,7 +32,7 @@ export const select = {
       (byTopic[topic] ||= []).push(ds);
     }
 
-    const topics = ['NaturalWorld', 'Military', 'Urban', 'Aviation', 'Test']; // extend as needed
+    const topics = ['Urban', 'NaturalWorld', 'Military', 'Aviation', 'Test']; // extend as needed
 
 
     const orderedTopics = [
