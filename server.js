@@ -341,13 +341,6 @@ async function getNextDataset (pid, currentDs) {
 
     let index = meta.curIndex++;
 
-    // REMOVE THIS CODE -- TEMP FIX
-    if (index === 2 || index === 3){
-      index = 4;
-      meta.curIndex = 4
-    }
-    // REMOVE THIS CODE -- TEMP FIX
-
     nextDs      = `${topic}_${index}`;
 
     /* generate dataset via Python */
