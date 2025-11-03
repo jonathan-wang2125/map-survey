@@ -1163,17 +1163,37 @@ app.post('/run-python', async (req, res) => {
   }
 
   // Check if dataset being submitted has two annotators
-  assigned = await getAssigned(dataset);
+  const assigned = await getAssigned(dataset);
 
-  let allStatuses = [];
+  const submittedMembers = [];
   for (const member of assigned) {
     const status = await getStatus(member, dataset);
-    console.log(status)
-    if (status)
-      allStatuses = allStatuses.concat(status);
+    if (status) submittedMembers.push(member);
   }
   // if dataset has two annotators, grade dataset
-  if (assigned.length > 1 && allStatuses.length > 0){
+  const groundTruthAccuracies = new Map();
+  for (const member of submittedMembers) {
+    try {
+      const gradeOut = await execFileAsync(pythonBin, [gradeDataset, member, dataset], { cwd: pythonRoot });
+      const lastLine = gradeOut.stdout.split('\n').filter(Boolean).pop() || '{}';
+      const parsed = JSON.parse(lastLine);
+      if (parsed && typeof parsed.accuracy === 'number') {
+        groundTruthAccuracies.set(member, parsed.accuracy);
+      }
+    } catch (err) {
+      console.warn(`Ground-truth grading failed for ${member} on ${dataset}:`, err);
+    }
+  }
+
+  if (groundTruthAccuracies.size) {
+    await Promise.all(Array.from(groundTruthAccuracies.entries()).map(([pid, score]) =>
+      redis.set(`v1:${pid}:${dataset}:meta`, score)
+    ));
+    if (groundTruthAccuracies.has(prolificID)) {
+      accuracy = groundTruthAccuracies.get(prolificID);
+    }
+  } else if (assigned.length > 1 && submittedMembers.length > 1) {
+    // If no ground truth, fall back to comparing annotators against each other
     // find annotator matches and filter
     try {
       const compareOut = await execFileAsync(pythonBin, [compareResponses, assigned[0], assigned[1], dataset], { cwd: pythonRoot });   // pass PID and dataset to the script
