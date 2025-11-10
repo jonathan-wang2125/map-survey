@@ -32,6 +32,14 @@ export const past = {
 
     // Clear & insert filter button + cards container
     wrap.innerHTML = '';
+    const usesGroundTruth = ds.endsWith('Accuracy');
+    if (usesGroundTruth) {
+      const notice = document.createElement('p');
+      notice.className = 'info-banner';
+      notice.textContent = 'These accuracy-set results are compared to the ground-truth key, not to another annotator.';
+      notice.style.marginBottom = '1rem';
+      wrap.appendChild(notice);
+    }
     const filterBtn = document.createElement('button');
     filterBtn.id = 'filterIncorrectBtn';
     filterBtn.textContent = 'Show Incorrect Only';
@@ -70,9 +78,12 @@ export const past = {
     // 4) build cards using the pre‐fetched questionJSONs
     responses.forEach((r, idx) => {
       const questionJSON = questionJSONs[idx];
-      const correctLabel = questionJSON?.Label 
-        ?? r.nonconcurred_response 
+      const correctLabel = questionJSON?.Label
+        ?? r.nonconcurred_response
         ?? '';
+        const labelPrefix = questionJSON?.Label
+        ? (usesGroundTruth ? 'Ground Truth Answer' : 'Correct Answer')
+        : (usesGroundTruth ? 'Ground Truth Answer' : 'Other User\'s Response');
 
       const card = document.createElement('div');
       card.className = 'answer-card';
@@ -109,7 +120,7 @@ export const past = {
           ${
             r.llm_eval === "Incorrect" && correctLabel !== null
             ? `<p class="correct-label" style="color:green; margin:0.25rem 0 0 0; font-style:italic;">
-                ${questionJSON?.Label ? 'Correct Answer' : 'Other User\'s Response'}: ${correctLabel}
+                ${labelPrefix}: ${correctLabel}
               </p>`
             : ``
           }
