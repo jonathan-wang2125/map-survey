@@ -78,12 +78,13 @@ export const past = {
     // 4) build cards using the pre‐fetched questionJSONs
     responses.forEach((r, idx) => {
       const questionJSON = questionJSONs[idx];
-      const correctLabel = questionJSON?.Label
-        ?? r.nonconcurred_response
-        ?? '';
-        const labelPrefix = questionJSON?.Label
-        ? (usesGroundTruth ? 'Ground Truth Answer' : 'Correct Answer')
-        : (usesGroundTruth ? 'Ground Truth Answer' : 'Other User\'s Response');
+      const correctLabel = usesGroundTruth
+  ? (r.groundTruth || '')
+  : (r.nonconcurred_response || '');
+
+const labelPrefix = usesGroundTruth
+  ? 'Ground Truth Answer'
+  : 'Other User\'s Response';
 
       const card = document.createElement('div');
       card.className = 'answer-card';
@@ -118,7 +119,7 @@ export const past = {
           </label>
 
           ${
-            r.llm_eval === "Incorrect" && correctLabel !== null
+            r.llm_eval === "Incorrect" 
             ? `<p class="correct-label" style="color:green; margin:0.25rem 0 0 0; font-style:italic;">
                 ${labelPrefix}: ${correctLabel}
               </p>`

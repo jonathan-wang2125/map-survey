@@ -774,6 +774,8 @@ app.get('/qresponses/:pid', async (req, res) => {
 
   const pattern = `v1:${pid}:${dataset}:*`;
   const out = [];
+  // ans.mapFile = mapFile;
+  
 
   for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
     const key   = keyBuf.toString();
@@ -793,6 +795,7 @@ app.get('/qresponses/:pid', async (req, res) => {
       try {
         const qObj = JSON.parse(qRaw.toString());
         mapFile = qObj.Map || qObj.map || '';
+        ans.groundTruth = qObj.Label || '';
       } catch {/* ignore bad json */}
     }
 
