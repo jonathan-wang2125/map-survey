@@ -78,11 +78,13 @@ export const past = {
     // 4) build cards using the pre‐fetched questionJSONs
     responses.forEach((r, idx) => {
       const questionJSON = questionJSONs[idx];
-      const correctLabel = usesGroundTruth
-  ? (r.groundTruth || '')
-  : (r.nonconcurred_response || '');
-
-const labelPrefix = usesGroundTruth
+      const rawCorrectLabel = usesGroundTruth
+        ? (questionJSON?.Label ?? questionJSON?.label ?? '')
+        : (questionJSON?.Label ?? questionJSON?.label ?? r.nonconcurred_response ?? '');
+      const correctLabel = typeof rawCorrectLabel === 'string'
+        ? rawCorrectLabel
+        : (rawCorrectLabel != null ? String(rawCorrectLabel) : '');
+      const labelPrefix = (questionJSON?.Label || questionJSON?.label)
   ? 'Ground Truth Answer'
   : 'Other User\'s Response';
 
