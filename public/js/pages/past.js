@@ -32,7 +32,7 @@ export const past = {
 
     // Clear & insert filter button + cards container
     wrap.innerHTML = '';
-    const usesGroundTruth = ds.endsWith('Accuracy');
+    const usesGroundTruth = ds.endsWith('Accuracy') || ds.endsWith('Training');
     if (usesGroundTruth) {
       const notice = document.createElement('p');
       notice.className = 'info-banner';
@@ -78,16 +78,81 @@ export const past = {
     // 4) build cards using the pre‐fetched questionJSONs
     responses.forEach((r, idx) => {
       const questionJSON = questionJSONs[idx];
+       const extractGroundTruth = (value, { allowLabelFallback = false } = {}) => {
+        const visit = v => {
+          if (v == null) return undefined;
+
+          if (typeof v === 'string') {
+            try {
+              const parsed = JSON.parse(v);
+              if (parsed && typeof parsed === 'object') return visit(parsed);
+            } catch {/* not JSON */}
+            return undefined;
+          }
+
+          if (Array.isArray(v)) {
+            for (const item of v) {
+              const found = visit(item);
+              if (found != null) return found;
+            }
+            return undefined;
+          }
+
+          if (typeof v !== 'object') return undefined;
+
+          const truthKeys = [
+            'groundTruth', 'ground_truth', 'GroundTruth', 'groundtruth',
+            'groundTruthAnswer', 'ground_truth_answer', 'groundtruth_answer',
+            'groundTruthResponse', 'ground_truth_response',
+            'answer_key', 'answerKey', 'gold_answer', 'goldAnswer', 'gold',
+            'correct_answer', 'correctAnswer', 'expected_answer', 'expectedAnswer'
+          ];
+
+          for (const key of truthKeys) {
+            if (v[key] != null) return v[key];
+          }
+
+          if (allowLabelFallback) {
+            if (v.Label != null) return v.Label;
+            if (v.label != null) return v.label;
+            if (v.Answer != null) return v.Answer;
+            if (v.answer != null) return v.answer;
+          }
+
+          for (const [key, child] of Object.entries(v)) {
+            const cleaned = key.replace(/[_\s-]/g, '').toLowerCase();
+            if (cleaned.includes('groundtruth') && child != null) return child;
+
+            const found = visit(child);
+            if (found != null) return found;
+          }
+
+          return undefined;
+        };
+
+        return visit(value);
+      };
+
       const rawCorrectLabel = usesGroundTruth
-        ? (questionJSON?.Label ?? questionJSON?.label ?? '')
+        // ? (
+        //     questionJSON?.Label ??
+        //     questionJSON?.label ??
+        //     r.groundTruth ??
+        //     r.ground_truth ??
+        //     ''
+        //   )
+        ? (
+            extractGroundTruth(r) ??
+            extractGroundTruth(questionJSON, { allowLabelFallback: true }) ??
+            ''
+          )
         : (questionJSON?.Label ?? questionJSON?.label ?? r.nonconcurred_response ?? '');
       const correctLabel = typeof rawCorrectLabel === 'string'
         ? rawCorrectLabel
         : (rawCorrectLabel != null ? String(rawCorrectLabel) : '');
-      const labelPrefix = (questionJSON?.Label || questionJSON?.label)
-  ? 'Ground Truth Answer'
-  : 'Other User\'s Response';
-
+      const labelPrefix = usesGroundTruth
+        ? 'Ground Truth Answer'
+        : 'Other User\'s Response';
       const card = document.createElement('div');
       card.className = 'answer-card';
       card.setAttribute('data-eval', r.llm_eval);

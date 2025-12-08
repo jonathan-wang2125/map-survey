@@ -776,6 +776,91 @@ app.get('/qresponses/:pid', async (req, res) => {
   const out = [];
   // ans.mapFile = mapFile;
   
+  const usesGroundTruth = dataset.endsWith('Accuracy') || dataset.endsWith('Training');
+
+  const getJkdewittAnswer = async uid => {
+    if (!usesGroundTruth) return undefined;
+
+    const baselineKey = `v1:jkdewitt:${dataset}:${uid}`;
+    const rawBaseline = await redis.get(baselineKey);
+    if (!rawBaseline) return undefined;
+
+    try {
+      const parsed = JSON.parse(rawBaseline.toString());
+      return parsed.answer
+        ?? parsed.Answer
+        ?? parsed.response
+        ?? parsed.Response
+        ?? parsed.llm_response
+        ?? parsed.label
+        ?? parsed.Label;
+    } catch {
+      return undefined;
+    }
+  };
+  
+
+  const extractGroundTruth = (obj, { allowLabelFallback = false } = {}) => {
+    const visit = value => {
+      if (value == null) return undefined;
+
+      // Strings may themselves be JSON that carry the ground-truth answer
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed === 'object') {
+            return visit(parsed);
+          }
+        } catch {/* not JSON – fall through */}
+        return undefined;
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = visit(item);
+          if (found != null) return found;
+        }
+        return undefined;
+      }
+
+      if (typeof value !== 'object') return undefined;
+
+      const truthKeys = [
+        'groundTruth', 'ground_truth', 'GroundTruth', 'groundtruth',
+        'groundTruthAnswer', 'ground_truth_answer', 'groundtruth_answer',
+        'groundTruthResponse', 'ground_truth_response',
+        'answer_key', 'answerKey', 'gold_answer', 'goldAnswer', 'gold',
+        'correct_answer', 'correctAnswer', 'expected_answer', 'expectedAnswer'
+      ];
+
+      for (const key of truthKeys) {
+        if (value[key] != null) return value[key];
+      }
+
+      if (allowLabelFallback) {
+        if (value.Label != null) return value.Label;
+        if (value.label != null) return value.label;
+        if (value.Answer != null) return value.Answer;
+        if (value.answer != null) return value.answer;
+      }
+
+      for (const [key, child] of Object.entries(value)) {
+        const cleaned = key.replace(/[_\s-]/g, '').toLowerCase();
+        if (cleaned.includes('groundtruth') && child != null) {
+          return child;
+        }
+
+        const found = visit(child);
+        if (found != null) return found;
+      }
+
+      return undefined;
+    };
+
+    return visit(obj);
+  };
+
+
 
   for await (const keyBuf of redis.scanIterator({ MATCH: pattern })) {
     const key   = keyBuf.toString();
@@ -795,7 +880,11 @@ app.get('/qresponses/:pid', async (req, res) => {
       try {
         const qObj = JSON.parse(qRaw.toString());
         mapFile = qObj.Map || qObj.map || '';
-        ans.groundTruth = qObj.Label || '';
+        const baselineGroundTruth = await getJkdewittAnswer(uid);
+        const answerGroundTruth = extractGroundTruth(ans);
+        const questionGroundTruth = extractGroundTruth(qObj, { allowLabelFallback: true });
+        ans.groundTruth = baselineGroundTruth ?? answerGroundTruth ?? questionGroundTruth ?? '';
+
       } catch {/* ignore bad json */}
     }
 
