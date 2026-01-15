@@ -72,6 +72,60 @@ const v1Users       = v1('usernames');                // set of pids
 const v1AssignUser  = pid => v1(`assignments:${pid}`);// set of datasets for a pid
 const v1AssignDb    = ds => v1(`assignments:${ds}`);
 const v1AnswerKey   = (pid, ds, uid) => v1(`${pid}:${ds}:${uid}`);
+const isUrbanDataset = dataset =>
+  typeof dataset === 'string' && dataset.toLowerCase().startsWith('urban');
+const isAccuracyDataset = dataset =>
+  typeof dataset === 'string' && dataset.toLowerCase().endsWith('accuracy');
+const isTrainingDataset = dataset =>
+  typeof dataset === 'string' && dataset.toLowerCase().endsWith('training');
+const hasGroundTruthSuffix = dataset =>
+  isAccuracyDataset(dataset) || isTrainingDataset(dataset);
+
+async function gradeAndEvaluateDataset(pid, dataset) {
+  const gradeOut = await execFileAsync(
+    pythonBin,
+    [gradeDataset, pid, dataset],
+    { cwd: pythonRoot }
+  );
+  const lastLine = gradeOut.stdout.split('\n').filter(Boolean).pop() || '{}';
+  const parsed = JSON.parse(lastLine);
+  const accuracy = parsed.accuracy;
+  const evalFile = parsed.eval_file;
+  if (typeof accuracy !== 'number' && typeof accuracy !== 'string') {
+    throw new Error('missing accuracy field');
+  }
+
+  if (evalFile) {
+    await execFileAsync(
+      surveyPython,
+      [addEval, pid, dataset, evalFile],
+      { cwd: surveyRoot }
+    );
+  }
+
+  await redis.set(`v1:${pid}:${dataset}:meta`, accuracy);
+  return accuracy;
+}
+
+async function gradeAllUrbanDatasets({ force = false } = {}) {
+  const datasets = await redis.sMembers('v1:datasets');
+  const urbanDatasets = datasets.filter(ds => isUrbanDataset(ds));
+
+  for (const dataset of urbanDatasets) {
+    const assigned = await getAssigned(dataset);
+    for (const pid of assigned) {
+      const metaKey = `v1:${pid}:${dataset}:meta`;
+      if (!force && await redis.exists(metaKey)) {
+        continue;
+      }
+      try {
+        await gradeAndEvaluateDataset(pid, dataset);
+      } catch (err) {
+        console.error(`Urban grading failed for ${pid}/${dataset}:`, err);
+      }
+    }
+  }
+}
 
 /**
  * Populate DATASETS / DATASET_IDS / DATASETS_MAP from Redis.
@@ -312,7 +366,7 @@ async function getNextDataset (pid, currentDs) {
   }
 
   for (const cand of existing) {
-    if (cand.endsWith('Accuracy')){
+    if (isAccuracyDataset(cand)){
       const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
       if (!assigned) {                                     // user not on it
         nextDs = cand;
@@ -511,7 +565,7 @@ app.get('/admin/campaign_status/:topic', async (req, res) => {
   /* --- all users assigned to *any* dataset in this campaign --- */
   const userSet = new Set();
   for (const ds of dsIDs) {
-    if (ds.endsWith("Accuracy")) {
+      if (isAccuracyDataset(ds)) {
       const members = await redis.sMembers(`v1:assignments:${ds}`);
       members.forEach(u => userSet.add(u));
     }
@@ -776,7 +830,7 @@ app.get('/qresponses/:pid', async (req, res) => {
   const out = [];
   // ans.mapFile = mapFile;
   
-  const usesGroundTruth = dataset.endsWith('Accuracy') || dataset.endsWith('Training');
+  const usesGroundTruth = hasGroundTruthSuffix(dataset);
 
   const getJkdewittAnswer = async uid => {
     if (!usesGroundTruth) return undefined;
@@ -963,7 +1017,7 @@ app.post('/request_adjudication', express.json(), async (req, res) => {
   const { pid, dataset, uid } = req.body || {};
   if (!pid || !dataset || !uid)
     return res.status(400).json({ error: 'missing fields' });
-  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+  if (hasGroundTruthSuffix(dataset))
     return res.status(400).json({ error: 'adjudication not allowed' });
 
   await redis.sAdd('v1:adjudications', `${pid}:${dataset}:${uid}`);
@@ -979,7 +1033,7 @@ app.get('/adjudications', async (req, res) => {
   const out = [];
   for (const id of ids) {
     const [pid, dataset, uid] = id.split(':');
-    if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+    if (hasGroundTruthSuffix(dataset))
       continue;
     const ansRaw = await redis.get(`v1:${pid}:${dataset}:${uid}`);
     const qRaw   = await redis.get(`v1:datasets:${dataset}:${uid}`);
@@ -1088,7 +1142,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
   if (!pid || !dataset || !uid || !choice)
     return res.status(400).json({ error: 'missing fields' });
 
-  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training'))
+  if (hasGroundTruthSuffix(dataset))
     return res.status(400).json({ error: 'adjudication not allowed' });
 
   let otherPid = null;
@@ -1200,7 +1254,7 @@ app.post('/run-python', async (req, res) => {
   let output;
   let nextDs;
   let accuracy = 'submitted';
-  if (dataset.endsWith('Accuracy') || dataset.endsWith('Training')) {
+   if (hasGroundTruthSuffix(dataset) || isUrbanDataset(dataset)) {
     execFile(
       pythonBin,
       [gradeDataset, prolificID, dataset],    // pass PID and dataset to the script
@@ -1235,7 +1289,7 @@ app.post('/run-python', async (req, res) => {
         } else  if (dataset.endsWith('Training') || (accuracy >= 0.85)) {             // only then branch to new work
           try { nextDs = await getNextDataset(prolificID, dataset); }
           catch (e) { return res.status(500).json({ error: e.message }); }
-          if (dataset.endsWith('Training')){
+          if (isTrainingDataset(dataset)){
             output = `You scored ${(accuracy*100).toFixed(1)}% accuracy in training. Please review your answers and understand what you might have done wrong before proceeding to the evaulation dataset on the "Home" page.`
           }
           else {
