@@ -175,6 +175,7 @@ export const past = {
         /* -------- inner HTML -------- */
         card.innerHTML = `
           <p><strong>Q:</strong> ${r.question}</p>
+          ${r.adjudicationRequested ? '<span class="adjudication-flag">Adjudication requested</span>' : ''}
           ${r.adjudication ? `<span class="adjudication-flag">Adjudicated: ${r.adjudication}</span>` : ''}
 
           <label>Your Answer:
@@ -242,7 +243,12 @@ export const past = {
           !Common.ds().endsWith('Accuracy') &&
           !Common.ds().endsWith('Training')) {
           const adjBtn = document.createElement('button');
-          adjBtn.textContent = 'Request adjudication';
+          const isResolved = !!r.adjudication;
+          const alreadyRequested = !!r.adjudicationRequested;
+          adjBtn.textContent = isResolved
+            ? 'Adjudicated'
+            : (alreadyRequested ? 'Requested' : 'Request adjudication');
+          adjBtn.disabled = isResolved || alreadyRequested;
           adjBtn.style.marginLeft = '0.5rem';
           card.querySelector('div').appendChild(adjBtn);
           adjBtn.addEventListener('click', async () => {
@@ -253,6 +259,11 @@ export const past = {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ pid: Common.pid(), dataset: Common.ds(), uid: r.uid })
             });
+            const flag = document.createElement('span');
+            flag.className = 'adjudication-flag';
+            flag.textContent = 'Adjudication requested';
+            const questionRow = card.querySelector('p');
+            questionRow.insertAdjacentElement('afterend', flag);
           });
         }
 

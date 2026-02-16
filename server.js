@@ -828,6 +828,8 @@ app.get('/qresponses/:pid', async (req, res) => {
 
   const pattern = `v1:${pid}:${dataset}:*`;
   const out = [];
+  const pendingAdjudications = new Set(await redis.sMembers('v1:adjudications'));
+  const resolvedAdjudications = new Set(await redis.sMembers('v1:past_adjudications'));
   // ans.mapFile = mapFile;
   
   const usesGroundTruth = hasGroundTruthSuffix(dataset);
@@ -943,6 +945,9 @@ app.get('/qresponses/:pid', async (req, res) => {
     }
 
     ans.mapFile = mapFile;        // <- attach for front-end use
+    const adjudicationId = `${pid}:${dataset}:${uid}`;
+    ans.adjudicationRequested = pendingAdjudications.has(adjudicationId) || !!ans.adjudication_requested;
+    ans.adjudicationResolved = resolvedAdjudications.has(adjudicationId) || !!ans.adjudication;
     out.push(ans);
   }
 
@@ -1021,6 +1026,16 @@ app.post('/request_adjudication', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'adjudication not allowed' });
 
   await redis.sAdd('v1:adjudications', `${pid}:${dataset}:${uid}`);
+  const answerKey = `v1:${pid}:${dataset}:${uid}`;
+  const answerRaw = await redis.get(answerKey);
+  if (answerRaw) {
+    try {
+      const answerObj = JSON.parse(answerRaw.toString());
+      answerObj.adjudication_requested = true;
+      answerObj.adjudication_requested_at = Date.now();
+      await redis.set(answerKey, JSON.stringify(answerObj));
+    } catch {/* ignore malformed answer payload */}
+  }
   res.json({ ok: true });
 });
 
@@ -1170,6 +1185,8 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
         : 'Rejected';
       obj.adjudication_reason = reason || '';
       obj.adjudicator_label = label || '';
+       obj.adjudication_requested = false;
+      delete obj.adjudication_requested_at;
       await redis.set(key1, JSON.stringify(obj));
     } catch {}
   }
@@ -1186,6 +1203,8 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
           : 'Rejected';
         obj2.adjudication_reason = reason || '';
         obj2.adjudicator_label = label || '';
+            obj2.adjudication_requested = false;
+        delete obj2.adjudication_requested_at;
         await redis.set(key2, JSON.stringify(obj2));
       } catch {}
     }
@@ -1232,6 +1251,16 @@ app.post('/cancel_adjudication', express.json(), async (req, res) => {
   if (!pid || !dataset || !uid)
     return res.status(400).json({ error: 'missing fields' });
   await redis.sRem('v1:adjudications', `${pid}:${dataset}:${uid}`);
+   const answerKey = `v1:${pid}:${dataset}:${uid}`;
+  const answerRaw = await redis.get(answerKey);
+  if (answerRaw) {
+    try {
+      const answerObj = JSON.parse(answerRaw.toString());
+      answerObj.adjudication_requested = false;
+      delete answerObj.adjudication_requested_at;
+      await redis.set(answerKey, JSON.stringify(answerObj));
+    } catch {/* ignore malformed answer payload */}
+  }
   res.json({ ok: true });
 });
 
