@@ -343,12 +343,12 @@ async function getNextDataset (pid, currentDs) {
 
   for (const cand of existing) {
     const assigned = await redis.sIsMember(`v1:assignments:${cand}`, pid);
-    if (!assigned) continue;
-
-    const metaExists = await redis.exists(`v1:${pid}:${cand}:meta`);
-    if (!metaExists && cand !== currentDs) {
-      nextDs = cand;
-      break;
+    if (assigned){
+      const metaExists = await redis.exists(`v1:${pid}:${cand}:meta`);
+      if (!metaExists && cand !== currentDs) {
+        nextDs = cand;
+        break;
+      }
     }
   }
 
@@ -1366,6 +1366,7 @@ app.post('/run-python', async (req, res) => {
         // Only one header ever goes out
         if (!res.headersSent) {
           return res.status(500).json({ error: err.message || 'Internal error' });
+        }
       }
     }
     // const user1_meta_key = `v1:${assigned[0]}:${dataset}:meta`;
