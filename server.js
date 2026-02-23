@@ -1284,57 +1284,29 @@ app.post('/run-python', async (req, res) => {
   let nextDs;
   let accuracy = 'submitted';
    if (hasGroundTruthSuffix(dataset) || isUrbanDataset(dataset)) {
-    execFile(
-      pythonBin,
-      [gradeDataset, prolificID, dataset],    // pass PID and dataset to the script
-      { cwd: pythonRoot },
-      async (err, stdout, stderr) => {
-        if (err) {
-          console.error('Python error:', stderr);
-          return res.status(500).json({ error: 'grading failed' });
-        }
+    try {
+      accuracy = await gradeAndEvaluateDataset(prolificID, dataset);
+    } catch (err) {
+      console.error(`Grading failed for ${prolificID}/${dataset}:`, err);
+      accuracy = 'submitted';
+    }
 
-        /* stdout should be a single JSON line:  {"accuracy": 0.83} */
-        try {
-          // keep only the last non-empty line (in case Python prints warnings)
-          const lastLine = stdout.split('\n').filter(Boolean).pop() || '{}';
-          accuracy = JSON.parse(lastLine).accuracy;
-          save_file = JSON.parse(lastLine).eval_file;
-          if (typeof accuracy !== 'number' && accuracy !== 'string')
-            throw new Error('missing accuracy field');
-          execFile(surveyPython, [addEval, prolificID, dataset, save_file], {cwd: surveyRoot}, async (err, stdout, stderr) =>{
-            if (err) {
-              console.error('Python error:', stderr);
-              return res.status(500).json({ error: 'database update failed' });
-            }
-          })
-        } catch (e) {
-          console.error('Bad grader output:', stdout);
-          return res.status(500).json({ error: 'invalid grader output' });
-        }
-
-        if (typeof accuracy === 'string') {
-          output = 'Thank you for your submission.'
-        } else  if (dataset.endsWith('Training') || (accuracy >= 0.85)) {             // only then branch to new work
-          try { nextDs = await getNextDataset(prolificID, dataset); }
-          catch (e) { return res.status(500).json({ error: e.message }); }
-          if (isTrainingDataset(dataset)){
-            output = `You scored ${(accuracy*100).toFixed(1)}% accuracy in training. Please review your answers and understand what you might have done wrong before proceeding to the evaulation dataset on the "Home" page.`
-          }
-          else {
-            output = `Congratulations! You have passed the test with ${(accuracy*100).toFixed(1)}% accuracy. Please proceed to the next available dataset on the "Home" page.`
-          }
-        }
-        else {
-          output = 'We are sorry, you do not meet the requirements to continue this study. Thank you for your participation.'
-        }
-
-        await redis.set(metaKey, accuracy);
-        return res.json({ ok:true, output });
+      if (typeof accuracy === 'string') {
+      output = 'Thank you for your submission.';
+    } else if (dataset.endsWith('Training') || (accuracy >= 0.85)) {
+      try { nextDs = await getNextDataset(prolificID, dataset); }
+      catch (e) { return res.status(500).json({ error: e.message }); }
+      if (isTrainingDataset(dataset)) {
+        output = `You scored ${(accuracy * 100).toFixed(1)}% accuracy in training. Please review your answers and understand what you might have done wrong before proceeding to the evaulation dataset on the "Home" page.`;
+      } else {
+        output = `Congratulations! You have passed the test with ${(accuracy * 100).toFixed(1)}% accuracy. Please proceed to the next available dataset on the "Home" page.`;
       }
-    );
+      } else {
+      output = 'We are sorry, you do not meet the requirements to continue this study. Thank you for your participation.';
+    }
 
-    return;
+
+    return res.json({ ok: true, output });
   }
 
   // Check if dataset being submitted has two annotators
@@ -1360,37 +1332,46 @@ app.post('/run-python', async (req, res) => {
     }
   }
 
-  if (groundTruthAccuracies.size) {
+  if (groundTruthAccuracies.size === submittedMembers.length && submittedMembers.length > 0) {
     await Promise.all(Array.from(groundTruthAccuracies.entries()).map(([pid, score]) =>
       redis.set(`v1:${pid}:${dataset}:meta`, score)
     ));
     if (groundTruthAccuracies.has(prolificID)) {
       accuracy = groundTruthAccuracies.get(prolificID);
     }
-  } else if (assigned.length > 1 && submittedMembers.length > 1) {
-    // If no ground truth, fall back to comparing annotators against each other
-    // find annotator matches and filter
-    try {
-      const compareOut = await execFileAsync(pythonBin, [compareResponses, assigned[0], assigned[1], dataset], { cwd: pythonRoot });   // pass PID and dataset to the script
-      const lastLine = compareOut.stdout.split('\n').filter(Boolean).pop() || '{}';
-      accuracy = JSON.parse(lastLine).accuracy;
-      const incorrect_annotations = JSON.parse(lastLine).incorrect_annotations;
-      if (typeof accuracy !== 'number' && accuracy !== 'string')
-        throw new Error('missing accuracy field');
-          // update user response for unmatched answers
-      const unmatchedOut = await execFileAsync(surveyPython, [addUnmatchedResponse, assigned[0], assigned[1], dataset, JSON.stringify(incorrect_annotations)], {cwd: surveyRoot});
-      console.log(unmatchedOut.stdout)
-    } catch (err) {
-      console.error('Error in executing compareRespones.py\n', err);
-      // Only one header ever goes out
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || 'Internal error' });
+  } else {
+    if (groundTruthAccuracies.size > 0) {
+      console.warn(`Ignoring partial ground-truth grading for ${dataset}; graded ${groundTruthAccuracies.size}/${submittedMembers.length}.`);
+    }
+
+    if (assigned.length > 1 && submittedMembers.length > 1) {
+      // If no usable ground truth, fall back to comparing annotators against each other.
+      try {
+        const compareOut = await execFileAsync(pythonBin, [compareResponses, assigned[0], assigned[1], dataset], { cwd: pythonRoot });   // pass PID and dataset to the script
+        const lastLine = compareOut.stdout.split('\n').filter(Boolean).pop() || '{}';
+        accuracy = JSON.parse(lastLine).accuracy;
+        const incorrect_annotations = JSON.parse(lastLine).incorrect_annotations;
+        if (typeof accuracy !== 'number' && accuracy !== 'string')
+          throw new Error('missing accuracy field');
+        // update user response for unmatched answers
+        const unmatchedOut = await execFileAsync(surveyPython, [addUnmatchedResponse, assigned[0], assigned[1], dataset, JSON.stringify(incorrect_annotations)], {cwd: surveyRoot});
+        console.log(unmatchedOut.stdout)
+
+        const user1_meta_key = `v1:${assigned[0]}:${dataset}:meta`;
+        const user2_meta_key = `v1:${assigned[1]}:${dataset}:meta`;
+        await redis.set(user1_meta_key, accuracy);
+        await redis.set(user2_meta_key, accuracy);
+      } catch (err) {
+        console.error('Error in executing compareRespones.py\n', err);
+        // Only one header ever goes out
+        if (!res.headersSent) {
+          return res.status(500).json({ error: err.message || 'Internal error' });
       }
     }
-    const user1_meta_key = `v1:${assigned[0]}:${dataset}:meta`;
-    const user2_meta_key = `v1:${assigned[1]}:${dataset}:meta`;
-    await redis.set(user1_meta_key, accuracy);
-    await redis.set(user2_meta_key, accuracy);
+    // const user1_meta_key = `v1:${assigned[0]}:${dataset}:meta`;
+    // const user2_meta_key = `v1:${assigned[1]}:${dataset}:meta`;
+    // await redis.set(user1_meta_key, accuracy);
+    // await redis.set(user2_meta_key, accuracy);
   }
 
   try { nextDs = await getNextDataset(prolificID, dataset); }
