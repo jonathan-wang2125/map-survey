@@ -28,6 +28,28 @@
     .node.root text { fill: #fff; }
     .node.campaign rect { fill: #eef3ff; stroke: #9db4e8; }
     #err { color: #b00020; padding: 20px 24px; }
+    #recent-bar { padding: 12px 24px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    #recent-bar button, #recent-bar select, #recent-bar input {
+      font: inherit; font-size: 13px; padding: 5px 12px; border: 1px solid #dde3ee;
+      border-radius: 6px; background: #fff; color: #1c2430; cursor: pointer; }
+    #recent-bar button.primary { background: #2456d6; border-color: #2456d6; color: #fff; }
+    #recent-bar input { width: 70px; cursor: text; }
+    #recent-panel { margin: 12px 24px 0; background: #fff; border: 1px solid #dde3ee;
+                    border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+    #recent-panel .pillrow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    #recent-panel table { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+    #recent-panel th, #recent-panel td { text-align: left; padding: 5px 10px;
+                    border-bottom: 1px solid #eef1f7; vertical-align: top; }
+    #recent-panel th { color: #5a6a82; font-weight: 600; white-space: nowrap; }
+    #recent-panel td.when { white-space: nowrap; color: #5a6a82; }
+    #recent-panel .ev { border-radius: 10px; padding: 1px 8px; font-size: 11.5px; white-space: nowrap; }
+    #recent-panel .ev.created { background: #e6f4ea; color: #14632a; }
+    #recent-panel .ev.edited { background: #fff3d6; color: #7a5300; }
+    #recent-panel .ev.adjudicated, #recent-panel .ev.requested { background: #eef3ff; color: #2456d6; }
+    #recent-panel .tag { background: #f1e6ff; color: #5b2ba6; border-radius: 10px;
+                    padding: 1px 8px; font-size: 11px; white-space: nowrap; }
+    #recent-panel .muted { color: #8b98ab; }
+    #recent-note { font-size: 12px; color: #8b98ab; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -37,6 +59,24 @@
     <span class="sub" id="stamp"></span>
   </header>
   <div id="totals"></div>
+  <div id="recent-bar">
+    <button id="recent-toggle" class="primary">Recent changes</button>
+    <span id="recent-controls" style="display:none">
+      <select id="recent-preset">
+        <option value="1">last hour</option>
+        <option value="6">last 6 hours</option>
+        <option value="24" selected>last 24 hours</option>
+        <option value="48">last 48 hours</option>
+        <option value="168">last 7 days</option>
+        <option value="720">last 30 days</option>
+        <option value="custom">custom…</option>
+      </select>
+      <input id="recent-hours" type="number" min="0.1" step="1" value="24"
+             title="hours" style="display:none">
+      <button id="recent-refresh">refresh</button>
+    </span>
+  </div>
+  <div id="recent-panel" style="display:none"></div>
   <div id="err"></div>
   <div id="graph-wrap"><svg id="graph"></svg></div>
 
@@ -173,6 +213,75 @@ function drawTree(root) {
     svg.appendChild(g);
   }
 }
+
+/* ---- recent changes panel (answer-record activity) ---- */
+const esc = s => String(s ?? '').replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const evCls = { 'created': 'created', 'edited': 'edited',
+                'adjudicated': 'adjudicated', 'adjudication requested': 'requested' };
+
+function recentHours() {
+  const preset = document.getElementById('recent-preset').value;
+  return preset === 'custom'
+    ? parseFloat(document.getElementById('recent-hours').value) || 24
+    : parseFloat(preset);
+}
+
+async function loadRecent() {
+  const panel = document.getElementById('recent-panel');
+  panel.style.display = '';
+  panel.innerHTML = '<span class="muted">loading…</span>';
+  let d;
+  try {
+    const r = await fetch('/api/db/recent?hours=' + recentHours());
+    d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    panel.innerHTML = '<span style="color:#b00020">Failed: ' + esc(e) + '</span>';
+    return;
+  }
+  const by = d.byEvent || {};
+  const pillsHtml = [
+    ['events', d.total], ['created', by['created'] || 0], ['edited', by['edited'] || 0],
+    ['adjudicated', by['adjudicated'] || 0],
+    ['datasets touched', Object.keys(d.byDataset || {}).length],
+    ['users active', Object.keys(d.byUser || {}).length],
+  ].map(([k, v]) => `<span class="pill"><b>${fmt(v)}</b> ${k}</span>`).join('');
+  const rows = d.events.map(e => `<tr>
+    <td class="when">${new Date(e.ts).toLocaleString()}</td>
+    <td><span class="ev ${evCls[e.event] || ''}">${esc(e.event)}</span></td>
+    <td><a href="${nodeURL('user', e.pid)}">${esc(e.pid)}</a></td>
+    <td><a href="${nodeURL('dataset', e.ds)}">${esc(e.ds)}</a></td>
+    <td><a href="${nodeURL('question', e.ds, { uid: e.uid })}" title="${esc(e.uid)}">${esc(e.uid.slice(0, 8))}…</a></td>
+    <td>${esc(e.answer)}${e.badQuestion ? ' <span class="tag">bad q</span>' : ''}${
+        e.adjudication ? ` <span class="tag">adj: ${esc(e.adjudication)}</span>` : ''}${
+        e.source ? ` <span class="tag" title="${esc(e.source)}">import</span>` : ''}</td>
+  </tr>`).join('');
+  panel.innerHTML =
+    `<div class="pillrow">${pillsHtml}</div>` +
+    (d.total === 0
+      ? '<span class="muted">No answer activity in this window.</span>'
+      : `<table><tr><th>when</th><th>event</th><th>user</th><th>dataset</th>
+           <th>question</th><th>answer</th></tr>${rows}</table>`) +
+    (d.truncated ? `<div id="recent-note">showing newest ${fmt(d.events.length)} of ${fmt(d.total)} events — narrow the window to see the rest</div>` : '') +
+    `<div id="recent-note">${esc(d.note)} · scanned ${fmt(d.answersScanned)} answers · index built ${esc(d.generatedAt)}</div>`;
+}
+
+document.getElementById('recent-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('recent-panel');
+  const controls = document.getElementById('recent-controls');
+  const open = panel.style.display === 'none';
+  controls.style.display = open ? '' : 'none';
+  panel.style.display = open ? '' : 'none';
+  if (open) loadRecent();
+});
+document.getElementById('recent-preset').addEventListener('change', () => {
+  document.getElementById('recent-hours').style.display =
+    document.getElementById('recent-preset').value === 'custom' ? '' : 'none';
+  loadRecent();
+});
+document.getElementById('recent-hours').addEventListener('change', loadRecent);
+document.getElementById('recent-refresh').addEventListener('click', loadRecent);
 
 main();
 </script>

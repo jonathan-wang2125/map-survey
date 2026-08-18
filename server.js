@@ -1187,6 +1187,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
       obj.adjudication_reason = reason || '';
       obj.adjudicator_label = label || '';
        obj.adjudication_requested = false;
+      obj.adjudicated_at = Date.now();
       delete obj.adjudication_requested_at;
       await redis.set(key1, JSON.stringify(obj));
     } catch {}
@@ -1205,6 +1206,7 @@ app.post('/adjudicate_result', express.json(), async (req, res) => {
         obj2.adjudication_reason = reason || '';
         obj2.adjudicator_label = label || '';
             obj2.adjudication_requested = false;
+        obj2.adjudicated_at = Date.now();
         delete obj2.adjudication_requested_at;
         await redis.set(key2, JSON.stringify(obj2));
       } catch {}
