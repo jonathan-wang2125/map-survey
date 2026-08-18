@@ -50,6 +50,12 @@
                     padding: 1px 8px; font-size: 11px; white-space: nowrap; }
     #recent-panel .muted { color: #8b98ab; }
     #recent-note { font-size: 12px; color: #8b98ab; margin-top: 8px; }
+    #recent-panel .pill.clickable { cursor: pointer; user-select: none; }
+    #recent-panel .pill.clickable:hover { border-color: #2456d6; }
+    #recent-panel .pill.active { background: #2456d6; border-color: #2456d6; color: #fff; }
+    #recent-panel .pill.active b { color: #fff; }
+    #recent-panel th.sortable { cursor: pointer; user-select: none; }
+    #recent-panel th.sortable:hover { color: #2456d6; }
   </style>
 </head>
 <body>
@@ -220,6 +226,13 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g,
 const evCls = { 'created': 'created', 'edited': 'edited',
                 'adjudicated': 'adjudicated', 'adjudication requested': 'requested' };
 
+const recentState = { filter: null, sortCol: null, sortDir: 1, data: null };
+const RECENT_COLS = [
+  ['when', e => e.ts], ['event', e => e.event], ['user', e => e.pid],
+  ['dataset', e => e.ds], ['question', e => e.uid],
+  ['answer', e => String(e.answer ?? '')],
+];
+
 function recentHours() {
   const preset = document.getElementById('recent-preset').value;
   return preset === 'custom'
@@ -233,21 +246,61 @@ async function loadRecent() {
   panel.innerHTML = '<span class="muted">loading…</span>';
   let d;
   try {
-    const r = await fetch('/api/db/recent?hours=' + recentHours());
+    const q = new URLSearchParams({ hours: recentHours() });
+    if (recentState.filter) q.set('event', recentState.filter);
+    const r = await fetch('/api/db/recent?' + q);
     d = await r.json();
     if (d.error) throw new Error(d.error);
   } catch (e) {
     panel.innerHTML = '<span style="color:#b00020">Failed: ' + esc(e) + '</span>';
     return;
   }
+  recentState.filter = d.filter;   // server echoes the applied filter (null if invalid)
+  recentState.data = d;
+  renderRecent();
+}
+
+function toggleRecentFilter(ev) {
+  recentState.filter = recentState.filter === ev ? null : ev;
+  loadRecent();
+}
+
+function cycleRecentSort(col) {
+  if (recentState.sortCol !== col) { recentState.sortCol = col; recentState.sortDir = 1; }
+  else if (recentState.sortDir === 1) recentState.sortDir = -1;
+  else { recentState.sortCol = null; recentState.sortDir = 1; }   // third click cancels
+  renderRecent();
+}
+
+function renderRecent() {
+  const d = recentState.data, panel = document.getElementById('recent-panel');
   const by = d.byEvent || {};
-  const pillsHtml = [
-    ['events', d.total], ['created', by['created'] || 0], ['edited', by['edited'] || 0],
-    ['adjudicated', by['adjudicated'] || 0],
-    ['datasets touched', Object.keys(d.byDataset || {}).length],
-    ['users active', Object.keys(d.byUser || {}).length],
-  ].map(([k, v]) => `<span class="pill"><b>${fmt(v)}</b> ${k}</span>`).join('');
-  const rows = d.events.map(e => `<tr>
+  const evPill = (name, n) =>
+    `<span class="pill clickable ${recentState.filter === name ? 'active' : ''}"
+           data-ev="${esc(name)}"><b>${fmt(n)}</b> ${esc(name)}</span>`;
+  const pillsHtml =
+    `<span class="pill"><b>${fmt(d.grandTotal)}</b> events</span>` +
+    evPill('created', by['created'] || 0) + evPill('edited', by['edited'] || 0) +
+    evPill('adjudicated', by['adjudicated'] || 0) +
+    (by['adjudication requested'] ? evPill('adjudication requested', by['adjudication requested']) : '') +
+    `<span class="pill"><b>${fmt(Object.keys(d.byDataset || {}).length)}</b> datasets touched</span>` +
+    `<span class="pill"><b>${fmt(Object.keys(d.byUser || {}).length)}</b> users active</span>`;
+
+  let events = d.events;
+  if (recentState.sortCol !== null) {
+    const key = RECENT_COLS.find(([c]) => c === recentState.sortCol)[1];
+    events = [...events].sort((a, b) => {
+      const x = key(a), y = key(b);
+      const cmp = typeof x === 'number'
+        ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+      return recentState.sortDir * cmp;
+    });
+  }
+  const headers = RECENT_COLS.map(([c]) => {
+    const arrow = recentState.sortCol === c ? (recentState.sortDir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable" data-col="${c}" title="click to sort / reverse / reset">${esc(c)}${arrow}</th>`;
+  }).join('');
+  const rows = events.map(e => `<tr>
     <td class="when">${new Date(e.ts).toLocaleString()}</td>
     <td><span class="ev ${evCls[e.event] || ''}">${esc(e.event)}</span></td>
     <td><a href="${nodeURL('user', e.pid)}">${esc(e.pid)}</a></td>
@@ -260,11 +313,15 @@ async function loadRecent() {
   panel.innerHTML =
     `<div class="pillrow">${pillsHtml}</div>` +
     (d.total === 0
-      ? '<span class="muted">No answer activity in this window.</span>'
-      : `<table><tr><th>when</th><th>event</th><th>user</th><th>dataset</th>
-           <th>question</th><th>answer</th></tr>${rows}</table>`) +
-    (d.truncated ? `<div id="recent-note">showing newest ${fmt(d.events.length)} of ${fmt(d.total)} events — narrow the window to see the rest</div>` : '') +
+      ? `<span class="muted">No ${recentState.filter ? `"${esc(recentState.filter)}" ` : ''}answer activity in this window.</span>`
+      : `<table><tr>${headers}</tr>${rows}</table>`) +
+    (d.truncated ? `<div id="recent-note">showing newest ${fmt(d.events.length)} of ${fmt(d.total)}${
+        recentState.filter ? ` "${esc(recentState.filter)}"` : ''} events — narrow the window to see the rest</div>` : '') +
     `<div id="recent-note">${esc(d.note)} · scanned ${fmt(d.answersScanned)} answers · index built ${esc(d.generatedAt)}</div>`;
+  panel.querySelectorAll('.pill.clickable').forEach(el =>
+    el.addEventListener('click', () => toggleRecentFilter(el.dataset.ev)));
+  panel.querySelectorAll('th.sortable').forEach(el =>
+    el.addEventListener('click', () => cycleRecentSort(el.dataset.col)));
 }
 
 document.getElementById('recent-toggle').addEventListener('click', () => {
