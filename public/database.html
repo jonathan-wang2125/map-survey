@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Explorer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           margin: 0; background: #f6f7fb; color: #1c2430; }
+    header { padding: 14px 24px; background: #1c2430; color: #fff;
+             display: flex; align-items: baseline; gap: 16px; }
+    header h1 { font-size: 18px; margin: 0; }
+    header .sub { color: #9fb0c9; font-size: 13px; }
+    #totals { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 24px 0; }
+    .pill { background: #fff; border: 1px solid #dde3ee; border-radius: 20px;
+            padding: 5px 14px; font-size: 13px; }
+    .pill b { color: #2456d6; }
+    #graph-wrap { overflow: auto; padding: 10px 24px 40px; }
+    svg { display: block; }
+    .edge { fill: none; stroke: #b9c4d8; stroke-width: 1.5; }
+    .node rect { fill: #fff; stroke: #b9c4d8; stroke-width: 1.2; rx: 8;
+                 transition: stroke .12s, filter .12s; }
+    .node.clickable { cursor: pointer; }
+    .node.clickable:hover rect { stroke: #2456d6; filter: drop-shadow(0 2px 5px rgba(36,86,214,.25)); }
+    .node text.title { font-size: 13px; font-weight: 600; fill: #1c2430; }
+    .node text.count { font-size: 11.5px; fill: #5a6a82; }
+    .node.root rect { fill: #1c2430; stroke: #1c2430; }
+    .node.root text { fill: #fff; }
+    .node.campaign rect { fill: #eef3ff; stroke: #9db4e8; }
+    #err { color: #b00020; padding: 20px 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Redis Database Explorer</h1>
+    <span class="sub">read-only &middot; click any node to open its data</span>
+    <span class="sub" id="stamp"></span>
+  </header>
+  <div id="totals"></div>
+  <div id="err"></div>
+  <div id="graph-wrap"><svg id="graph"></svg></div>
+
+<script>
+const nodeURL = (type, id, extra) => {
+  const p = new URLSearchParams({ type, ...(id !== undefined ? { id } : {}), ...(extra || {}) });
+  return `/database_node.html?${p}`;
+};
+const fmt = n => n.toLocaleString('en-US');
+
+async function main() {
+  let o;
+  try {
+    const r = await fetch('/api/db/overview');
+    o = await r.json();
+    if (o.error) throw new Error(o.error);
+  } catch (e) {
+    document.getElementById('err').textContent = 'Failed to load overview: ' + e;
+    return;
+  }
+  document.getElementById('stamp').textContent = 'index built ' + o.generatedAt;
+  const t = o.totals;
+  document.getElementById('totals').innerHTML = [
+    ['keys', t.keys], ['users', t.users], ['datasets', t.datasets],
+    ['questions', t.questions], ['answers', t.answers],
+    ['past adjudications', t.pastAdjudications],
+  ].map(([k, v]) => `<span class="pill"><b>${fmt(v)}</b> ${k}</span>`).join('');
+
+  /* ---- build tree ---- */
+  const root = {
+    title: 'MapQA Redis DB', count: `${fmt(t.keys)} keys`, cls: 'root',
+    url: null, children: [],
+  };
+  root.children.push({
+    title: 'Users', count: `${t.users} total, ${t.activeUsers} with answers`,
+    url: nodeURL('users'), children: [],
+  });
+  for (const c of o.campaigns) {
+    const fams = o.families.filter(f => f.campaign === c.topic);
+    root.children.push({
+      title: `Campaign: ${c.topic}`, cls: 'campaign',
+      count: `${fmt(c.datasetCount)} datasets` +
+             (c.meta && c.meta.curIndex !== undefined ? ` · curIndex ${c.meta.curIndex}` : ''),
+      url: nodeURL('campaign', c.topic),
+      children: fams.map(f => ({
+        title: f.family,
+        count: `${fmt(f.datasets)} ds · ${fmt(f.questions)} q · ${fmt(f.answers)} ans`,
+        url: nodeURL('family', f.family), children: [],
+      })),
+    });
+  }
+  const orphans = o.families.filter(f => f.campaign === '(no campaign)');
+  if (orphans.length) {
+    root.children.push({
+      title: 'No campaign', count: `${orphans.length} families`, url: null,
+      children: orphans.map(f => ({
+        title: f.family,
+        count: `${fmt(f.datasets)} ds · ${fmt(f.questions)} q · ${fmt(f.answers)} ans`,
+        url: nodeURL('family', f.family), children: [],
+      })),
+    });
+  }
+  root.children.push({
+    title: 'Adjudications',
+    count: `${fmt(t.pastAdjudications)} past · ${fmt(t.pendingAdjudications)} pending`,
+    url: nodeURL('adjudications'), children: [],
+  });
+  root.children.push({
+    title: 'Counters', count: `${o.counters.length} keys`,
+    url: null,
+    children: o.counters.map(k => ({
+      title: k.replace(/^v1:/, ''), count: 'INCR counter',
+      url: nodeURL('key', undefined, { key: k }), children: [],
+    })),
+  });
+
+  drawTree(root);
+}
+
+/* ---- simple left-to-right tidy tree ---- */
+const NODE_W = 300, NODE_H = 46, X_GAP = 90, Y_GAP = 14, PAD = 20;
+
+function layout(node, depth, state) {
+  node.depth = depth;
+  if (!node.children.length) {
+    node.y = state.nextY;
+    state.nextY += NODE_H + Y_GAP;
+  } else {
+    for (const c of node.children) layout(c, depth + 1, state);
+    node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+  }
+  node.x = PAD + depth * (NODE_W + X_GAP);
+}
+
+function drawTree(root) {
+  const state = { nextY: PAD };
+  layout(root, 0, state);
+  const svg = document.getElementById('graph');
+  const ns = 'http://www.w3.org/2000/svg';
+  let maxDepth = 0;
+  const flat = [];
+  (function walk(n) { flat.push(n); maxDepth = Math.max(maxDepth, n.depth);
+                      n.children.forEach(walk); })(root);
+  svg.setAttribute('width', PAD * 2 + (maxDepth + 1) * NODE_W + maxDepth * X_GAP);
+  svg.setAttribute('height', state.nextY + PAD);
+
+  for (const n of flat) {
+    for (const c of n.children) {
+      const p = document.createElementNS(ns, 'path');
+      const x1 = n.x + NODE_W, y1 = n.y + NODE_H / 2,
+            x2 = c.x, y2 = c.y + NODE_H / 2, mx = (x1 + x2) / 2;
+      p.setAttribute('d', `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
+      p.setAttribute('class', 'edge');
+      svg.appendChild(p);
+    }
+  }
+  for (const n of flat) {
+    const g = document.createElementNS(ns, 'g');
+    g.setAttribute('class', `node ${n.cls || ''} ${n.url ? 'clickable' : ''}`);
+    g.setAttribute('transform', `translate(${n.x},${n.y})`);
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('width', NODE_W); rect.setAttribute('height', NODE_H);
+    rect.setAttribute('rx', 8);
+    g.appendChild(rect);
+    const t1 = document.createElementNS(ns, 'text');
+    t1.setAttribute('x', 12); t1.setAttribute('y', 19); t1.setAttribute('class', 'title');
+    t1.textContent = n.title;
+    g.appendChild(t1);
+    const t2 = document.createElementNS(ns, 'text');
+    t2.setAttribute('x', 12); t2.setAttribute('y', 36); t2.setAttribute('class', 'count');
+    t2.textContent = n.count || '';
+    g.appendChild(t2);
+    if (n.url) g.addEventListener('click', () => { window.location.href = n.url; });
+    svg.appendChild(g);
+  }
+}
+
+main();
+</script>
+</body>
+</html>

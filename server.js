@@ -20,6 +20,7 @@ const sharp         = require('sharp');
 const { execFile }  = require('child_process');
 const { randomUUID } = require('crypto');
 const { pythonBin, pythonRoot, gradeDataset, createDataset, compareResponses, addEval, addUnmatchedResponse, surveyPython, surveyRoot} = require('./public/config/paths');
+const registerDatabaseRoutes = require('./databaseExplorer');
 const { get } = require('http');
 
 const ADJUDICATION_PASSCODE = 'letmein';
@@ -1479,6 +1480,7 @@ function scheduleDailyExport() {
 (async () => {
   await redis.connect();
   await loadDatasetsFromRedis();            // ← new
+  registerDatabaseRoutes(app, redis);       // read-only /database explorer
   scheduleDailyExport();
   app.listen(PORT, () => console.log(`Started server on http://localhost:${PORT}`));
 })();

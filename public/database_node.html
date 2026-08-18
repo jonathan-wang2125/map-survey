@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Node</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           margin: 0; background: #f6f7fb; color: #1c2430; }
+    header { padding: 14px 24px; background: #1c2430; color: #fff;
+             display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+    header a { color: #9fc0ff; text-decoration: none; font-size: 13px; }
+    header h1 { font-size: 17px; margin: 0; word-break: break-all; }
+    main { padding: 18px 24px 60px; max-width: 1250px; }
+    table { border-collapse: collapse; background: #fff; width: 100%;
+            border: 1px solid #dde3ee; border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #eef1f7;
+             font-size: 13.5px; vertical-align: top; }
+    th { background: #eef3ff; font-size: 12.5px; text-transform: uppercase;
+         letter-spacing: .04em; color: #40506b; }
+    tr:last-child td { border-bottom: none; }
+    a { color: #2456d6; }
+    .muted { color: #7a879c; }
+    .section { margin: 22px 0 8px; font-size: 15px; font-weight: 700; }
+    pre { background: #fff; border: 1px solid #dde3ee; border-radius: 8px;
+          padding: 12px; font-size: 12.5px; overflow-x: auto; white-space: pre-wrap;
+          word-break: break-word; }
+    .pill { background: #fff; border: 1px solid #dde3ee; border-radius: 20px;
+            padding: 4px 12px; font-size: 13px; margin-right: 8px; display: inline-block;
+            margin-bottom: 6px; }
+    .pill b { color: #2456d6; }
+    #err { color: #b00020; }
+    button.more { margin-top: 10px; padding: 6px 16px; border: 1px solid #b9c4d8;
+                  background: #fff; border-radius: 6px; cursor: pointer; }
+    img.qmap { max-width: 320px; max-height: 220px; border: 1px solid #dde3ee;
+               border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/database">&larr; back to graph</a>
+    <h1 id="title">Loading…</h1>
+  </header>
+  <main>
+    <div id="pills"></div>
+    <div id="err"></div>
+    <div id="content"></div>
+  </main>
+
+<script>
+const qp = new URLSearchParams(window.location.search);
+const type = qp.get('type'), id = qp.get('id');
+const nodeURL = (t, i, extra) => {
+  const p = new URLSearchParams({ type: t, ...(i !== undefined ? { id: i } : {}), ...(extra || {}) });
+  return `/database_node.html?${p}`;
+};
+const esc = s => String(s ?? '').replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = n => Number(n).toLocaleString('en-US');
+const el = id2 => document.getElementById(id2);
+const setTitle = t => { el('title').textContent = t; document.title = t; };
+const pills = arr => { el('pills').innerHTML = arr.map(([k, v]) =>
+  `<span class="pill"><b>${esc(v)}</b> ${esc(k)}</span>`).join(''); };
+const table = (headers, rows) =>
+  `<table><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>` +
+  rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('') + '</table>';
+const dsLink = ds => `<a href="${nodeURL('dataset', ds)}">${esc(ds)}</a>`;
+const userLink = pid => `<a href="${nodeURL('user', pid)}">${esc(pid)}</a>`;
+const qLink = (ds, uid) => `<a href="${nodeURL('question', ds, { uid })}">${esc(uid)}</a>`;
+const fail = e => { el('err').textContent = 'Error: ' + e; setTitle('Error'); };
+const getJSON = async url => {
+  const r = await fetch(url);
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+};
+
+const views = {
+  async users() {
+    setTitle('Users');
+    const d = await getJSON('/api/db/users');
+    pills([['users', d.total]]);
+    el('content').innerHTML = table(
+      ['user', 'answers', 'submitted datasets'],
+      d.users.map(u => [userLink(u.pid), fmt(u.answers), fmt(u.submitted)]));
+  },
+
+  async user() {
+    setTitle('User: ' + id);
+    const d = await getJSON('/api/db/user/' + encodeURIComponent(id));
+    pills([['datasets touched', d.datasets.length],
+           ['answers', d.datasets.reduce((s, r) => s + r.answers, 0)]]);
+    el('content').innerHTML = table(
+      ['dataset', 'assigned', 'answers / questions', 'submission meta'],
+      d.datasets.map(r => [
+        dsLink(r.ds), r.assigned ? 'yes' : '<span class="muted">no</span>',
+        `${fmt(r.answers)} / ${fmt(r.questions)}`,
+        r.submission ? esc(r.submission) : '<span class="muted">—</span>']));
+  },
+
+  async campaign() {
+    setTitle('Campaign: ' + id);
+    const [meta, members] = await Promise.all([
+      getJSON('/api/db/key?key=' + encodeURIComponent(`v1:campaigns:${id}:meta`)),
+      getJSON('/api/db/key?key=' + encodeURIComponent(`v1:campaigns:${id}`)),
+    ]);
+    const list = (members.value || []).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true }));
+    pills([['datasets', list.length]]);
+    el('content').innerHTML =
+      `<div class="section">Campaign meta (v1:campaigns:${esc(id)}:meta)</div>` +
+      `<pre>${esc(JSON.stringify(meta.value, null, 2))}</pre>` +
+      `<div class="section">Member datasets</div>` +
+      table(['dataset'], list.map(ds => [dsLink(ds)]));
+  },
+
+  async family() {
+    setTitle('Family: ' + id);
+    let offset = 0; const limit = 200; let total = 0; const rows = [];
+    const render = () => {
+      pills([['datasets', total]]);
+      el('content').innerHTML = table(
+        ['dataset', 'campaign', 'questions', 'answers', 'submitted by'], rows) +
+        (rows.length < total ? '<button class="more" onclick="loadMore()">Load more</button>' : '');
+    };
+    window.loadMore = async () => {
+      const d = await getJSON(`/api/db/family/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`);
+      total = d.total; offset += d.datasets.length;
+      for (const r of d.datasets) rows.push([
+        dsLink(r.ds), esc(r.campaign || '—'), fmt(r.questions), fmt(r.answers),
+        r.submittedBy.map(userLink).join(', ') || '<span class="muted">—</span>']);
+      render();
+    };
+    await window.loadMore();
+  },
+
+  async dataset() {
+    setTitle('Dataset: ' + id);
+    const d = await getJSON('/api/db/dataset/' + encodeURIComponent(id));
+    pills([['questions', d.questions.length],
+           ['campaign', d.campaign || '—'],
+           ['assigned users', d.assignedUsers.length],
+           ['submitted by', d.submittedBy.length]]);
+    const annRows = Object.entries(d.annotators).sort((a, b) => b[1] - a[1])
+      .map(([pid, n]) => [userLink(pid), fmt(n),
+                          d.submittedBy.includes(pid) ? 'yes' : '<span class="muted">no</span>']);
+    el('content').innerHTML =
+      `<div class="section">Meta (v1:datasets:${esc(id)}:meta)</div>` +
+      `<pre>${esc(JSON.stringify(d.meta, null, 2))}</pre>` +
+      `<div class="section">Annotators</div>` +
+      (annRows.length ? table(['user', 'answers', 'submitted'], annRows)
+                      : '<div class="muted">no answers yet</div>') +
+      (d.assignedUsers.length ?
+        `<div class="section">Assigned users</div>` +
+        d.assignedUsers.map(userLink).join(', ') : '') +
+      `<div class="section">Questions</div>` +
+      table(['uid', 'question', 'ground-truth label', 'map', 'answered by'],
+        d.questions.map(q => [
+          qLink(id, q.uid), esc(q.question),
+          q.label === null ? '<span class="muted">—</span>' : esc(q.label),
+          q.map ? `<a href="/maps/${encodeURIComponent(q.map)}" target="_blank">${esc(q.map)}</a>` : '—',
+          q.answeredBy.map(userLink).join(', ') || '<span class="muted">—</span>']));
+  },
+
+  async question() {
+    const uid = qp.get('uid');
+    setTitle(`Question ${uid} (${id})`);
+    const d = await getJSON(`/api/db/question/${encodeURIComponent(id)}/${encodeURIComponent(uid)}`);
+    pills([['answers', d.answers.length]]);
+    const mapFile = d.question.Map || '';
+    el('content').innerHTML =
+      `<div class="section">Question (v1:datasets:${esc(id)}:${esc(uid)})</div>` +
+      `<pre>${esc(JSON.stringify(d.question, null, 2))}</pre>` +
+      (mapFile ? `<div class="section">Map</div>
+        <a href="/maps/${encodeURIComponent(mapFile)}" target="_blank">
+          <img class="qmap" src="/thumb?file=${encodeURIComponent(mapFile)}&width=320" alt="${esc(mapFile)}">
+        </a>` : '') +
+      `<div class="section">Answers</div>` +
+      (d.answers.length ? d.answers.map(a =>
+        `<div class="section" style="font-size:13.5px">${userLink(a.pid)}</div>
+         <pre>${esc(JSON.stringify(a.answer, null, 2))}</pre>`).join('')
+       : '<div class="muted">no answers</div>');
+  },
+
+  async adjudications() {
+    setTitle('Adjudications');
+    let offset = 0; const limit = 100; const rows = []; let past = 0, pending = 0;
+    const render = () => {
+      pills([['past', past], ['pending', pending]]);
+      el('content').innerHTML =
+        table(['user', 'dataset', 'question uid'], rows) +
+        (rows.length < past ? '<button class="more" onclick="loadMore()">Load more</button>' : '');
+    };
+    window.loadMore = async () => {
+      const d = await getJSON(`/api/db/adjudications?offset=${offset}&limit=${limit}`);
+      past = d.pastTotal; pending = d.pendingTotal; offset += d.past.length;
+      for (const r of d.past) rows.push([userLink(r.pid), dsLink(r.ds), qLink(r.ds, r.uid)]);
+      render();
+    };
+    await window.loadMore();
+  },
+
+  async key() {
+    const key = qp.get('key');
+    setTitle('Key: ' + key);
+    const d = await getJSON('/api/db/key?key=' + encodeURIComponent(key));
+    pills([['type', d.type]]);
+    el('content').innerHTML = `<pre>${esc(JSON.stringify(d.value, null, 2))}</pre>`;
+  },
+};
+
+const view = views[type];
+if (view) view().catch(fail); else fail('unknown node type: ' + type);
+</script>
+</body>
+</html>
